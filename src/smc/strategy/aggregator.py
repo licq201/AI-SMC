@@ -265,11 +265,16 @@ class MultiTimeframeAggregator:
             else None
         )
 
-        # Step 2b: Regime classification — cache → AI → ATR fallback
+        # Step 2b: deterministic regime prefilter.
+        #
+        # Do not launch a live Claude/API debate from the M15 scan itself.
+        # The first pass must stay cheap and deterministic; if actual trade
+        # candidates survive the SMC gates, a second candidate-review pass
+        # below may use AI to protect decision quality.
         ai_assessment = classify_regime_ai(
             d1_df=data.get(Timeframe.D1),
             h4_df=data.get(Timeframe.H4),
-            ai_enabled=self._ai_regime_enabled,
+            ai_enabled=False,
             cache=self._regime_cache,
             cache_ts=bar_ts,
             precomputed_ctx=regime_ctx,
@@ -279,6 +284,7 @@ class MultiTimeframeAggregator:
         # read the AI regime (e.g. TREND_UP / ATH_BREAKOUT) and derive
         # trail params for the strategy_server /signal response.
         self._last_ai_assessment = ai_assessment
+        self._last_setup_diagnostic["ai_regime_stage"] = "deterministic_prefilter"
 
         # Legacy ranging gate: when NOT using AI regime (Sprint 5 compat),
         # suppress Tier 2/3 in ranging markets.  When AI regime is active,
@@ -518,6 +524,40 @@ class MultiTimeframeAggregator:
         # Step 6: Sort by confluence score descending, cap by regime max_concurrent
         sorted_setups = sorted(setups, key=lambda s: s.confluence_score, reverse=True)
         capped = sorted_setups[:regime_params.max_concurrent]
+
+        # Candidate-review pass: only spend AI compute after SMC has found a
+        # real candidate. This preserves directional accuracy where it matters
+        # while avoiding no-op M15 debate cycles.
+        if capped and self._ai_regime_enabled:
+            try:
+                ai_assessment = classify_regime_ai(
+                    d1_df=data.get(Timeframe.D1),
+                    h4_df=data.get(Timeframe.H4),
+                    ai_enabled=True,
+                    cache=self._regime_cache,
+                    cache_ts=bar_ts,
+                    precomputed_ctx=regime_ctx,
+                )
+                self._last_ai_assessment = ai_assessment
+                self._last_setup_diagnostic["ai_regime_stage"] = "candidate_review"
+                self._last_setup_diagnostic["ai_regime_source"] = ai_assessment.source
+                ai_params = ai_assessment.param_preset
+                min_confluence_ai = max(tier_floor, ai_params.confluence_floor)
+                capped = [
+                    setup
+                    for setup in capped
+                    if setup.entry_signal.direction in ai_params.allowed_directions
+                    and setup.entry_signal.trigger_type in ai_params.allowed_triggers
+                    and setup.confluence_score >= min_confluence_ai
+                ][: ai_params.max_concurrent]
+                if not capped:
+                    self._last_setup_diagnostic["stage_reject"] = (
+                        f"ai_candidate_review_blocked_{ai_assessment.regime}"
+                    )
+            except Exception as exc:
+                self._last_setup_diagnostic["ai_regime_stage"] = "candidate_review_error"
+                self._last_setup_diagnostic["ai_regime_error"] = str(exc)[:160]
+
         self._last_setup_diagnostic["zone_rejects"] = zone_rejects
         self._last_setup_diagnostic["zone_details"] = zone_details
         self._last_setup_diagnostic["current_price"] = round(current_price, 2)

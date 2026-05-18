@@ -25,6 +25,7 @@ from smc.ai.models import (
     ExternalContext,
     MarketRegimeAI,
 )
+from smc.ai.gate import ai_is_enabled
 from smc.ai.param_router import route
 from smc.smc_core.constants import XAUUSD_POINT_SIZE
 from smc.strategy.regime import classify_regime
@@ -706,20 +707,21 @@ def classify_regime_ai(
 
     start_ts = _time.monotonic()
     result: AIRegimeAssessment
+    effective_ai_enabled = bool(ai_enabled and ai_is_enabled())
 
     # Step 0: Cache lookup (backtest mode — zero computation cost)
     if cache is not None and cache_ts is not None:
         cached = cache.lookup(cache_ts)
         if cached is not None:
             result = cached
-            _emit_telemetry(result, start_ts, ai_enabled_flag=ai_enabled)
+            _emit_telemetry(result, start_ts, ai_enabled_flag=effective_ai_enabled)
             return result
         # Cache miss (ts before cache range) → fall through to live path
 
     # Insufficient data → immediate default
     if d1_df is None or d1_df.is_empty():
         result = _default_assessment()
-        _emit_telemetry(result, start_ts, ai_enabled_flag=ai_enabled)
+        _emit_telemetry(result, start_ts, ai_enabled_flag=effective_ai_enabled)
         return result
 
     # Step 1: Extract features (deterministic, ~1ms) — or reuse precomputed.
@@ -728,7 +730,7 @@ def classify_regime_ai(
     )
 
     # Step 2: Try AI debate path
-    if ai_enabled:
+    if effective_ai_enabled:
         try:
             from dataclasses import asdict
             from smc.ai.debate.pipeline import run_regime_debate
@@ -739,7 +741,7 @@ def classify_regime_ai(
             ai_result_raw = run_regime_debate(asdict(ctx))
             ai_result = _coerce_debate_result_to_assessment(ai_result_raw, ctx)
             if ai_result is not None and ai_result.confidence >= min_confidence:
-                _emit_telemetry(ai_result, start_ts, ai_enabled_flag=ai_enabled)
+                _emit_telemetry(ai_result, start_ts, ai_enabled_flag=effective_ai_enabled)
                 return ai_result
             # Low confidence or malformed → fall through to ATR
         except Exception as exc:
@@ -754,7 +756,7 @@ def classify_regime_ai(
 
     # Step 3: ATR fallback (always available)
     result = _atr_fallback(ctx)
-    _emit_telemetry(result, start_ts, ai_enabled_flag=ai_enabled)
+    _emit_telemetry(result, start_ts, ai_enabled_flag=effective_ai_enabled)
     return result
 
 

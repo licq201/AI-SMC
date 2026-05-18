@@ -7,8 +7,11 @@ from datetime import datetime, timezone
 import polars as pl
 import pytest
 
+from smc.ai.models import AIRegimeAssessment
+from smc.ai.param_router import route
 from smc.data.schemas import Timeframe
 from smc.smc_core.detector import SMCDetector
+from smc.smc_core.types import SMCSnapshot, StructureBreak
 from smc.strategy.aggregator import MultiTimeframeAggregator
 from smc.strategy.types import TradeSetup
 
@@ -145,6 +148,72 @@ class TestMultiTimeframeAggregator:
         after = datetime.now(tz=timezone.utc)
         for setup in result:
             assert before <= setup.generated_at <= after
+
+    def test_m15_prefilter_does_not_run_live_ai_regime_debate(
+        self,
+        sample_ohlcv_df: pl.DataFrame,
+        monkeypatch,
+    ) -> None:
+        """M15 setup scanning must not directly start Claude regime debate.
+
+        The first regime pass is deterministic. Full AI regime review can
+        happen later only after the SMC pipeline has found candidates.
+        """
+        ts = datetime(2024, 6, 15, tzinfo=timezone.utc)
+        bullish_break = StructureBreak(
+            ts=ts,
+            price=2350.0,
+            break_type="bos",
+            direction="bullish",
+            timeframe=Timeframe.D1,
+        )
+        bullish_snap = SMCSnapshot(
+            ts=ts,
+            timeframe=Timeframe.D1,
+            swing_points=(),
+            order_blocks=(),
+            fvgs=(),
+            structure_breaks=(bullish_break,),
+            liquidity_levels=(),
+            trend_direction="bullish",
+        )
+
+        agg = MultiTimeframeAggregator(
+            detector=SMCDetector(),
+            ai_regime_enabled=True,
+        )
+        monkeypatch.setattr(
+            agg,
+            "_detect_all",
+            lambda _data: {Timeframe.D1: bullish_snap, Timeframe.H4: bullish_snap},
+        )
+        calls: list[bool] = []
+
+        def _fake_classify_regime_ai(**kwargs):
+            calls.append(bool(kwargs["ai_enabled"]))
+            return AIRegimeAssessment(
+                regime="TRANSITION",
+                trend_direction="neutral",
+                confidence=0.45,
+                param_preset=route("TRANSITION"),
+                reasoning="deterministic prefilter",
+                assessed_at=ts,
+                source="atr_fallback",
+                cost_usd=0.0,
+            )
+
+        monkeypatch.setattr(
+            "smc.strategy.aggregator.classify_regime_ai",
+            _fake_classify_regime_ai,
+        )
+
+        result = agg.generate_setups(
+            {Timeframe.D1: sample_ohlcv_df, Timeframe.H4: sample_ohlcv_df},
+            current_price=2350.0,
+        )
+
+        assert result == ()
+        assert calls == [False]
 
 
 class TestZoneAntiClustering:

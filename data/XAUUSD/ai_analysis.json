@@ -1,0 +1,22 @@
+{
+  "source": "technical + ai_debate",
+  "assessed_at": "2026-05-18T15:30:00.054413+00:00",
+  "sma20": 4647.74,
+  "sma50": 4716.69,
+  "direction": "bearish",
+  "confidence": 0.7,
+  "reasoning": "Price $4535 vs SMA20 $4648 vs SMA50 $4717",
+  "ai_elapsed_ms": 40265,
+  "ai_direction": "bearish",
+  "ai_confidence": 0.5,
+  "ai_reasoning": "Both analysts converge bearish at 0.50 (average 0.50 + 0.1 agreement bonus = 0.60). H4 technical context confirms direction: SMA50 direction is down with slope -0.0319%, and lower_lows (2) exceed higher_highs (0), satisfying the bearish confirmation rule for an additional +0.10 bonus, reaching 0.70.",
+  "ai_source": "ai_debate",
+  "ai_key_drivers": [
+    "SMA50 sloping down at -0.0319%",
+    "2 lower lows vs 0 higher highs over 500 bars",
+    "Both analysts agree bearish at 0.50 confidence",
+    "H4 structure confirms bearish trend sequence"
+  ],
+  "atr_pct": 2.29,
+  "volatility": "HIGH"
+}

@@ -45,6 +45,7 @@ from smc.ai.direction_prompts import (
     DIRECTION_MACRO_ANALYST_SYSTEM,
     DIRECTION_NEWS_ANALYST_SYSTEM,
 )
+from smc.ai.gate import ai_is_enabled
 from smc.ai.models import AIDirection, ExternalContext, H4TechnicalContext
 
 logger = logging.getLogger(__name__)
@@ -430,10 +431,13 @@ class DirectionEngine:
         h4_ctx = extract_h4_context(h4_df)
 
         direction = None
-        try:
-            direction = self._run_direction_debate(external_ctx, h4_ctx)
-        except Exception:
-            logger.warning("AI direction debate failed, using SMA fallback", exc_info=True)
+        if ai_is_enabled():
+            try:
+                direction = self._run_direction_debate(external_ctx, h4_ctx)
+            except Exception:
+                logger.warning("AI direction debate failed, using SMA fallback", exc_info=True)
+        else:
+            logger.info("Global AI disabled; using deterministic direction fallback")
 
         if direction is None:
             # Step 4: SMA + DXY fallback

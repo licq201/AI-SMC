@@ -236,6 +236,7 @@ SMC_MAX_DRAWDOWN_PCT=10.0        # total drawdown halt threshold
 SMC_MAX_LOT_SIZE=0.01            # hard cap per order
 
 # AI Regime (optional — v1.1+)
+SMC_AI_ENABLED=1                 # 0 to block all Claude CLI / API calls globally
 SMC_AI_REGIME_ENABLED=0          # 1 to enable AI debate pipeline
 SMC_ANTHROPIC_API_KEY=sk-ant-... # Anthropic API key (if not using Claude CLI)
 SMC_LLM_DAILY_BUDGET_USD=5.0

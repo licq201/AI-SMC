@@ -77,6 +77,7 @@ class SMCConfig(BaseSettings):
     @field_validator(
         "macro_enabled",
         "mt5_mock",
+        "ai_enabled",
         "ai_regime_enabled",
         "range_reversal_confirm_enabled",
         "sl_fitness_judge_enabled",
@@ -96,7 +97,7 @@ class SMCConfig(BaseSettings):
         first, then normalises common truthy/falsy strings.
         """
         if isinstance(v, str):
-            stripped = v.strip().lower()
+            stripped = v.split("#", 1)[0].strip().lower()
             if stripped in {"true", "1", "yes", "on"}:
                 return True
             if stripped in {"false", "0", "no", "off", ""}:
@@ -271,6 +272,14 @@ class SMCConfig(BaseSettings):
     ai_regime_enabled: bool = Field(
         default=False,
         description="Enable AI-powered regime classification. When False, uses Sprint 5 ATR fallback.",
+    )
+    ai_enabled: bool = Field(
+        default=True,
+        description=(
+            "Global AI kill switch. When False, no Claude CLI or Anthropic API "
+            "calls are allowed anywhere; deterministic SMC/ATR/SMA fallbacks "
+            "remain active."
+        ),
     )
     ai_regime_min_confidence: float = Field(
         default=0.5,

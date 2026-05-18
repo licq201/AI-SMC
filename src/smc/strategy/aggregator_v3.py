@@ -195,7 +195,7 @@ class AggregatorV3(MultiTimeframeAggregator):
         ai_assessment = classify_regime_ai(
             d1_df=data.get(Timeframe.D1),
             h4_df=data.get(Timeframe.H4),
-            ai_enabled=self._ai_regime_enabled,
+            ai_enabled=False,
             cache=self._regime_cache,
             cache_ts=bar_ts,
         )
@@ -330,7 +330,7 @@ class AggregatorV3(MultiTimeframeAggregator):
         ai_assessment = classify_regime_ai(
             d1_df=data.get(Timeframe.D1),
             h4_df=data.get(Timeframe.H4),
-            ai_enabled=self._ai_regime_enabled,
+            ai_enabled=False,
             cache=self._regime_cache,
             cache_ts=bar_ts,
         )

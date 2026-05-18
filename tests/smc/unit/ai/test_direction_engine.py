@@ -504,6 +504,31 @@ class TestGetDirectionIntegration:
         assert result.source == "sma_fallback"
         assert result.direction in ("bullish", "bearish", "neutral")
 
+    @patch("smc.ai.direction_engine._has_claude_cli", return_value=True)
+    @patch("smc.ai.direction_engine._claude_cli_chat")
+    def test_global_ai_disabled_uses_sma_without_claude(
+        self,
+        mock_chat: MagicMock,
+        mock_has: MagicMock,
+        monkeypatch,
+    ) -> None:
+        """The global kill switch preserves deterministic direction fallback."""
+        monkeypatch.setenv("SMC_AI_ENABLED", "0")
+        mock_chat.return_value = json.dumps({
+            "direction": "bearish",
+            "confidence": 0.9,
+            "key_factors": ["should_not_run"],
+            "reasoning": "should not run",
+        })
+
+        engine = DirectionEngine()
+        h4_df = _make_h4_df(n_bars=100, trend=2.0)
+        result = engine.get_direction(h4_df=h4_df)
+
+        assert result.source == "sma_fallback"
+        assert result.direction == "bullish"
+        assert mock_chat.call_count == 0
+
     def test_with_file_cache(self, tmp_path: Path) -> None:
         # Build a small cache
         start = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)

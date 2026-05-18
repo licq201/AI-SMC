@@ -61,6 +61,30 @@ if not _file_logger.handlers:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
+CHINESE_EVENT_DESCRIPTIONS = {
+    "peak_balance_daily_reset": "每日最高净值重置",
+    "trading_paused": "交易已暂停（Dashboard 开关已启用）",
+    "consec_loss_halt_active": "已触发连续亏损熔断保护",
+    "drawdown_guard_block": "已触发每日最大回撤熔断保护",
+    "tick_unavailable": "获取行情 Tick 失败",
+    "mt5_handle_reset_giveup": "重试连接 MT5 失败多次，程序退出准备重启",
+    "macro_bias_computed": "宏观大周期指标偏差计算完成",
+    "macro_bias_fetch_failed": "宏观大周期指标数据获取失败",
+    "pre_write_gate_blocked": "开仓前置风控闸门拦截",
+    "paper_mode_signal": "纸面推演（模拟开仓）信号发出",
+    "margin_cap_gate": "保证金占比上限风控拦截",
+    "mt5_order_sent": "MT5 交易指令已发送",
+    "mt5_order_opened": "MT5 开仓交易成功",
+    "mt5_order_fail": "MT5 开仓交易失败",
+    "asian_quota_exhausted": "亚洲盘每日交易配额已耗尽",
+    "ai_regime_classified": "AI 市场环境分类完成",
+    "health_probe": "系统健康指标发射",
+    "virtual_balance_applied": "虚拟分仓余额比例计算已应用",
+    "anti_stack_cooldown_block": "防密集堆叠冷却限制拦截",
+    "stale_pid_removed": "检测到过期残留进程锁，自动清理",
+}
+
+
 def log_event(
     severity: Severity,
     event: str,
@@ -80,9 +104,10 @@ def log_event(
     payload = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "event": event,
+        "event_zh": CHINESE_EVENT_DESCRIPTIONS.get(event, "系统事件"),
         **fields,
     }
-    line = f"[{severity}] {json.dumps(payload, default=str)}\n"
+    line = f"[{severity}] {json.dumps(payload, default=str, ensure_ascii=False)}\n"
 
     # Always write to stderr (or explicit stream)
     try:

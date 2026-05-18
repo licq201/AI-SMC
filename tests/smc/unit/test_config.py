@@ -211,7 +211,7 @@ class TestSMCConfigAIRegimeEnabled:
         monkeypatch.delenv("SMC_AI_REGIME_ENABLED", raising=False)
 
         from smc.config import SMCConfig
-        cfg = SMCConfig()
+        cfg = SMCConfig(_env_file=None)
         assert cfg.ai_regime_enabled is False
 
     def test_ai_regime_enabled_env_true_activates(self, monkeypatch) -> None:
@@ -235,5 +235,43 @@ class TestSMCConfigAIRegimeEnabled:
         monkeypatch.delenv("SMC_AI_REGIME_MIN_CONFIDENCE", raising=False)
 
         from smc.config import SMCConfig
-        cfg = SMCConfig()
+        cfg = SMCConfig(_env_file=None)
         assert cfg.ai_regime_min_confidence == 0.5
+
+
+class TestSMCConfigGlobalAIEnabled:
+    """Global AI kill switch.
+
+    This is stronger than the narrower regime/direction flags: when off,
+    no code path may invoke Claude CLI or an API backend.
+    """
+
+    def test_ai_enabled_default_true_preserves_existing_flags(self, monkeypatch) -> None:
+        monkeypatch.delenv("SMC_AI_ENABLED", raising=False)
+
+        from smc.config import SMCConfig
+        cfg = SMCConfig(_env_file=None)
+        assert cfg.ai_enabled is True
+
+    def test_ai_enabled_env_false_disables_all_ai(self, monkeypatch) -> None:
+        monkeypatch.setenv("SMC_AI_ENABLED", "0")
+
+        from smc.config import SMCConfig
+        cfg = SMCConfig()
+        assert cfg.ai_enabled is False
+
+    def test_ai_enabled_whitespace_tolerated(self, monkeypatch) -> None:
+        monkeypatch.setenv("SMC_AI_ENABLED", "false ")
+
+        from smc.config import SMCConfig
+        cfg = SMCConfig()
+        assert cfg.ai_enabled is False
+
+    def test_ai_enabled_inline_comment_tolerated(self, monkeypatch) -> None:
+        monkeypatch.setenv("SMC_AI_ENABLED", "1       # enable all AI")
+        monkeypatch.setenv("SMC_AI_REGIME_ENABLED", "0       # disable regime")
+
+        from smc.config import SMCConfig
+        cfg = SMCConfig()
+        assert cfg.ai_enabled is True
+        assert cfg.ai_regime_enabled is False

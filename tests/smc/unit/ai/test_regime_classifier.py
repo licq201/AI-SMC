@@ -301,6 +301,30 @@ class TestClassifyRegimeAi:
         result = classify_regime_ai(d1, None, ai_enabled=False)
         assert result.source in ("atr_fallback", "default")
 
+    def test_global_ai_disabled_skips_debate_even_when_local_flag_on(self, monkeypatch):
+        """SMC_AI_ENABLED=0 is a hard kill switch for Claude/API calls."""
+        monkeypatch.setenv("SMC_AI_ENABLED", "0")
+        called = False
+
+        def _fake_debate(_features: object) -> dict:
+            nonlocal called
+            called = True
+            return {
+                "regime": "TREND_UP",
+                "confidence": 0.9,
+                "reasoning": "should not be used",
+                "total_cost_usd": 0.0,
+            }
+
+        import smc.ai.debate.pipeline as pipeline
+        monkeypatch.setattr(pipeline, "run_regime_debate", _fake_debate)
+
+        d1 = _make_d1_df()
+        result = classify_regime_ai(d1, None, ai_enabled=True)
+
+        assert called is False
+        assert result.source == "atr_fallback"
+
     def test_telemetry_emits_event_per_call(self, monkeypatch) -> None:
         """Every classify_regime_ai() call must emit one ai_regime_classified event."""
         captured: list[tuple[str, dict]] = []

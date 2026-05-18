@@ -6,5 +6,5 @@ REM 启动 localhost:8765 dashboard server，浏览器打开 http://localhost:87
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
-cd /d C:\AI-SMC
+cd /d E:\bossquant\MQ5\AI-SMC
 .venv\Scripts\python.exe scripts\dashboard_server.py >> logs\dashboard_web_stdout.log 2>> logs\dashboard_web_stderr.log

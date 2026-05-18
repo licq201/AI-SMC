@@ -50,7 +50,7 @@
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-indigo-500 flex items-center justify-center font-bold text-sm">A</div>
       <div>
-        <div class="text-sm font-semibold tracking-wide">AI-SMC</div>
+        <div class="text-sm font-semibold tracking-wide">东方6# AI-SMC</div>
         <div class="text-xs text-muted num" x-text="accountLabel"></div>
       </div>
     </div>
@@ -364,6 +364,40 @@
     </details>
   </div>
 
+  <!-- 卡片 3.5: SMC 学习追踪 -->
+  <template x-if="smcTrace">
+    <div class="card p-5 md:p-6 border-l-4" style="border-left-color: #10B981">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <div class="text-xs uppercase tracking-wider text-muted">SMC 阶段追踪</div>
+          <div class="mt-1 text-sm text-muted">按 D1/H4 → H1 → M15 → 环境过滤 → AI 复核展开</div>
+        </div>
+        <span class="px-2 py-1 rounded text-xs font-medium bg-slate-700 text-text" x-text="smcCurrentStageLabel"></span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <template x-for="stage in smcTrace.stages" :key="stage.name">
+          <div class="p-3 rounded-lg card-hi border-l-4" :style="{ borderLeftColor: smcStageColor(stage.status) }">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-medium" x-text="stage.label"></div>
+              <span class="text-xs" :style="{ color: smcStageColor(stage.status) }" x-text="smcStatusLabel(stage.status)"></span>
+            </div>
+            <div class="mt-2 text-xs text-muted leading-relaxed" x-text="stage.explanation"></div>
+            <div x-show="stage.direction" class="mt-2 text-xs num text-muted">
+              方向: <span x-text="stage.direction"></span>
+              <span x-show="stage.confidence !== undefined && stage.confidence !== null">
+                · 置信 <span x-text="Math.round(stage.confidence * 100) + '%'"></span>
+              </span>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="mt-3 text-xs text-muted">
+        当前决策: <span class="text-text" x-text="smcTrace.decision?.action || '—'"></span>
+        · <span x-text="smcTrace.decision?.reason || '等待下一根 K 线'"></span>
+      </div>
+    </div>
+  </template>
+
   <!-- 卡片 4: 区间可视化 -->
   <div x-show="rangeBounds" class="card p-5 md:p-6">
     <div class="flex items-center justify-between mb-3">
@@ -594,7 +628,7 @@
 </div>
 
 <footer class="text-center py-6 text-xs text-muted">
-  AI-SMC Dashboard · 每 5 秒自动刷新 · <a href="https://github.com/ChristopherCC-Liu" class="hover:text-text underline">GitHub</a>
+  东方6# AI-SMC Dashboard · 每 5 秒自动刷新 · <a href="https://github.com/ChristopherCC-Liu" class="hover:text-text underline">GitHub</a>
 </footer>
 
 <script>
@@ -665,7 +699,7 @@
       confirmKillSwitch: false,
       sessionToggles: sessionToggleDefs,
 
-      accountLabel: "TMGM-60078709",
+      accountLabel: "DooTechnology-563549",
 
       async start() {
         await this.fetchSymbols();
@@ -961,6 +995,31 @@
       get rawDiagnostic() {
         if (!this.state?.range_diagnostic) return "（本 cycle 无 range_diagnostic）";
         return JSON.stringify(this.state.range_diagnostic, null, 2);
+      },
+
+      get smcTrace() { return this.state?.smc_trace || null; },
+      get smcCurrentStageLabel() {
+        const labels = {
+          htf_bias: "HTF 方向",
+          h1_zone: "H1 交易区",
+          m15_entry: "M15 入场",
+          regime_filter: "环境过滤",
+          ai_review: "AI 复核",
+          decision: "决策完成",
+        };
+        return labels[this.smcTrace?.current_stage] || "等待数据";
+      },
+      smcStageColor(status) {
+        if (status === "passed") return "#10B981";
+        if (status === "blocked") return "#EF4444";
+        if (status === "skipped") return "#94A3B8";
+        return "#F59E0B";
+      },
+      smcStatusLabel(status) {
+        if (status === "passed") return "通过";
+        if (status === "blocked") return "阻断";
+        if (status === "skipped") return "跳过";
+        return "等待";
       },
 
       get rangeBounds() { return this.state?.range_bounds || null; },

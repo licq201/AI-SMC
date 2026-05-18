@@ -145,6 +145,7 @@ from smc.strategy.range_trader import (
 from smc.strategy.range_quota import AsianRangeQuota
 from smc.strategy.phase1a_circuit_breaker import Phase1aCircuitBreaker
 from smc.strategy.htf_bias import compute_htf_bias, htf_bias_tier
+from smc.strategy.smc_trace import build_smc_trace
 from smc.monitor.timing import next_bar_close
 from smc.monitor.structured_log import crit as log_crit, warn as log_warn, info as log_info
 from smc.monitor.critical_alerter import alert_critical
@@ -154,6 +155,7 @@ from smc.monitor.critical_alerter import alert_critical
 from smc.monitor import mt5_watchdog
 # Round 5 stability R2: per-cycle health_probe event for uptime / SLA digest.
 from smc.monitor import health_probe
+from smc.monitor.live_state_status import build_waiting_state
 from smc.monitor.state_io import atomic_write_json
 from smc.monitor.reconcile_cursor import load_reconcile_cursor, save_reconcile_cursor
 from smc.strategy.session import get_session_info
@@ -247,7 +249,7 @@ def fetch_mt5_data(mt5_path: str = "XAUUSD"):
     return data
 
 
-def run_ai_analysis(data):
+def run_ai_analysis(data, ai_enabled: bool = True):
     """Run AI direction analysis and save result."""
     analysis = {"source": "technical", "assessed_at": datetime.now(timezone.utc).isoformat()}
 
@@ -271,34 +273,45 @@ def run_ai_analysis(data):
                 analysis["confidence"] = 0.3
             analysis["reasoning"] = f"Price ${price:.0f} vs SMA20 ${sma20:.0f} vs SMA50 ${sma50:.0f}"
 
-    # Try AI debate (Claude CLI) — Round 5 T5: 180s hard cap via ThreadPoolExecutor
-    # Prevents worst-case 9-step debate (4 analysts + 2×bull/bear + judge) at
-    # 120s/step from hanging an entire M15 cycle (18 min worst case → now ≤3 min).
-    try:
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
-        from smc.ai.direction_engine import DirectionEngine
-        engine = DirectionEngine(cache_ttl_hours=1)  # Round 4.6-Q (USER): 4h→1h
-        h4_df = data.get(Timeframe.H4)
-        # Round 5 R2: capture wall-clock elapsed for the AI call so the
-        # per-cycle health_probe can report debate_elapsed_ms_last.
-        _ai_start_mono = time.monotonic()
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(engine.get_direction, h4_df=h4_df)
-            ai_dir = fut.result(timeout=180)  # 3min hard cap
-        analysis["ai_elapsed_ms"] = int((time.monotonic() - _ai_start_mono) * 1000)
-        if ai_dir.source != "neutral_default":
-            analysis["ai_direction"] = ai_dir.direction
-            analysis["ai_confidence"] = round(ai_dir.confidence, 3)
-            analysis["ai_reasoning"] = ai_dir.reasoning
-            analysis["ai_source"] = ai_dir.source
-            analysis["ai_key_drivers"] = list(ai_dir.key_drivers) if ai_dir.key_drivers else []
-            analysis["source"] = f"technical + {ai_dir.source}"
-    except FutTimeout:
-        analysis["ai_error"] = "ai_timeout_180s"
-        analysis["ai_elapsed_ms"] = 180_000
-        log_warn("ai_timeout", cycle_hint=analysis.get("assessed_at", "?"))
-    except Exception as e:
-        analysis["ai_error"] = str(e)[:100]
+    if not ai_enabled:
+        technical_direction = analysis.get("direction", "neutral")
+        technical_confidence = analysis.get("confidence", 0.3)
+        analysis["ai_direction"] = technical_direction
+        analysis["ai_confidence"] = technical_confidence
+        analysis["ai_reasoning"] = (
+            "AI disabled; using deterministic SMA technical direction fallback"
+        )
+        analysis["ai_source"] = "technical_fallback"
+        analysis["source"] = "technical + technical_fallback"
+    else:
+        # Try AI debate (Claude CLI) — Round 5 T5: 180s hard cap via ThreadPoolExecutor
+        # Prevents worst-case 9-step debate (4 analysts + 2×bull/bear + judge) at
+        # 120s/step from hanging an entire M15 cycle (18 min worst case → now ≤3 min).
+        try:
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
+            from smc.ai.direction_engine import DirectionEngine
+            engine = DirectionEngine(cache_ttl_hours=4)  # 恢复到 4h 以节约算力
+            h4_df = data.get(Timeframe.H4)
+            # Round 5 R2: capture wall-clock elapsed for the AI call so the
+            # per-cycle health_probe can report debate_elapsed_ms_last.
+            _ai_start_mono = time.monotonic()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(engine.get_direction, h4_df=h4_df)
+                ai_dir = fut.result(timeout=180)  # 3min hard cap
+            analysis["ai_elapsed_ms"] = int((time.monotonic() - _ai_start_mono) * 1000)
+            if ai_dir.source != "neutral_default":
+                analysis["ai_direction"] = ai_dir.direction
+                analysis["ai_confidence"] = round(ai_dir.confidence, 3)
+                analysis["ai_reasoning"] = ai_dir.reasoning
+                analysis["ai_source"] = ai_dir.source
+                analysis["ai_key_drivers"] = list(ai_dir.key_drivers) if ai_dir.key_drivers else []
+                analysis["source"] = f"technical + {ai_dir.source}"
+        except FutTimeout:
+            analysis["ai_error"] = "ai_timeout_180s"
+            analysis["ai_elapsed_ms"] = 180_000
+            log_warn("ai_timeout", cycle_hint=analysis.get("assessed_at", "?"))
+        except Exception as e:
+            analysis["ai_error"] = str(e)[:100]
 
     # Volatility
     if Timeframe.D1 in data:
@@ -717,6 +730,15 @@ def save_state(cycle, price, action, reason, ai_analysis, regime, setups,
                 "regime_source": _regime_source_r,
             }
 
+    state["smc_trace"] = build_smc_trace(
+        smc_diagnostic=state.get("smc_diagnostic"),
+        range_diagnostic=state.get("range_diagnostic"),
+        setups_count=len(setups),
+        action=action,
+        reason=reason,
+        ai_analysis=ai_analysis,
+    )
+
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(STATE_PATH, "w") as f:
         json.dump(state, f, indent=2, default=str)
@@ -866,9 +888,11 @@ def main():
     )
 
     detector = SMCDetector(swing_length=10)
+    _ai_runtime_enabled = _path_cfg.ai_enabled
+    _ai_regime_runtime_enabled = _ai_runtime_enabled and _path_cfg.ai_regime_enabled
     aggregator = MultiTimeframeAggregator(
         detector=detector,
-        ai_regime_enabled=_path_cfg.ai_regime_enabled,
+        ai_regime_enabled=_ai_regime_runtime_enabled,
     )
 
     # Round 4 Alt-B W2+W3: _path_cfg (SMCConfig) already loaded above for
@@ -892,7 +916,8 @@ def main():
     )
     log_info(
         "ai_regime_init",
-        ai_regime_enabled=_path_cfg.ai_regime_enabled,
+        ai_enabled=_ai_runtime_enabled,
+        ai_regime_enabled=_ai_regime_runtime_enabled,
         ai_regime_min_confidence=_path_cfg.ai_regime_min_confidence,
     )
 
@@ -905,8 +930,8 @@ def main():
         reversal_confirm_enabled=_path_cfg.range_reversal_confirm_enabled,
         # Round 9 P0-A/B/C: AI-aware gates default OFF; flip via SMC_* env.
         trend_filter_enabled=_path_cfg.range_trend_filter_enabled,
-        ai_regime_gate_enabled=_path_cfg.range_ai_regime_gate_enabled,
-        require_regime_valid=_path_cfg.range_require_regime_valid,
+        ai_regime_gate_enabled=(_ai_runtime_enabled and _path_cfg.range_ai_regime_gate_enabled),
+        require_regime_valid=(_ai_runtime_enabled and _path_cfg.range_require_regime_valid),
     )
     breakout_det = BreakoutDetector()
 
@@ -975,6 +1000,20 @@ def main():
 
         if wait > 0:
             print(f"[{now.strftime('%H:%M:%S')} UTC] Cycle {cycle}: next M15 at {nxt.strftime('%H:%M')} ({wait:.0f}s)")
+            try:
+                atomic_write_json(
+                    STATE_PATH,
+                    build_waiting_state(
+                        cycle=cycle,
+                        now=now,
+                        next_bar_close=nxt,
+                        symbol=SYMBOL,
+                        ai_enabled=_ai_runtime_enabled,
+                        ai_regime_enabled=_ai_regime_runtime_enabled,
+                    ),
+                )
+            except Exception as _waiting_state_exc:
+                log_warn("waiting_state_write_failed", exc=str(_waiting_state_exc)[:120])
             while wait > 0 and running:
                 time.sleep(min(10, wait))
                 wait -= 10
@@ -1039,7 +1078,7 @@ def main():
         # flag on POST /api/toggle_trading; live_demo was previously ignoring it.
         if PAUSE_FLAG_PATH.exists():
             log_warn("trading_paused", cycle=cycle, flag=str(PAUSE_FLAG_PATH))
-            print(f"  [PAUSED] trading_paused.flag present — skipping cycle {cycle}")
+            print(f"  [已暂停] dashboard 交易暂停标志已启用 — 跳过周期 {cycle}")
             _halt_blocked_reason = "kill_switch:dashboard_paused"
             _halt_label = "PAUSED"
             _halt_display_reason = "Dashboard kill-switch active (trading_paused.flag)"
@@ -1056,7 +1095,7 @@ def main():
                 consec_losses=snap.consec_losses,
                 tripped_at=snap.tripped_at,
             )
-            print(f"  [HALT] consec-loss halt ({snap.consec_losses} losses) — skipping cycle {cycle}")
+            print(f"  [熔断] 连续亏损熔断限制 ({snap.consec_losses} 次亏损) — 跳过周期 {cycle}")
             _halt_blocked_reason = f"consec_loss_halt:losses={snap.consec_losses}"
             _halt_label = "HALT"
             _halt_display_reason = f"连亏 {snap.consec_losses} 单触发每日保险"
@@ -1075,7 +1114,7 @@ def main():
                     daily_loss_pct=budget.daily_loss_pct,
                     total_drawdown_pct=budget.total_drawdown_pct,
                 )
-                print(f"  [HALT] drawdown guard: {budget.rejection_reason}")
+                print(f"  [熔断] 每日回撤保护拦截: {budget.rejection_reason}")
                 _halt_blocked_reason = f"drawdown_guard:{budget.rejection_reason}"
                 _halt_label = "HALT"
                 _halt_display_reason = f"回撤保护: {budget.rejection_reason}"
@@ -1116,7 +1155,7 @@ def main():
             mt5_wd = mt5_watchdog.record_tick_result(mt5_wd, tick_ok=tick_ok)
             if not tick_ok:
                 log_warn("tick_unavailable", cycle=cycle)
-                print("  WARN: no tick data")
+                print("  警告：无法获取行情数据 (no tick data)")
                 if mt5_watchdog.should_giveup(mt5_wd):
                     alert_critical(
                         "mt5_handle_reset_giveup",
@@ -1130,8 +1169,8 @@ def main():
                         reset_attempts=mt5_wd.reset_attempts,
                     )
                     print(
-                        f"  CRIT: {mt5_wd.consecutive_tick_none} consecutive "
-                        f"tick_none — exiting for Task Scheduler respawn."
+                        f"  严重错误：连续 {mt5_wd.consecutive_tick_none} 次无行情"
+                        f" - 退出进程以供计划任务重启。"
                     )
                     sys.exit(1)
                 if mt5_watchdog.should_reset(mt5_wd):
@@ -1139,12 +1178,12 @@ def main():
                 continue
             price = tick.bid
             spread = tick.ask - tick.bid
-            print(f"  {SYMBOL}: ${price:.2f} (spread ${spread:.2f})")
+            print(f"  {SYMBOL}: ${price:.2f} (点差 ${spread:.2f})")
 
             # 2. Fetch data
             data = fetch_mt5_data(cfg.mt5_path)
             bars_info = ", ".join(f"{k}: {len(v)}" for k, v in data.items())
-            print(f"  Data: {{{bars_info}}}")
+            print(f"  K线数据: {{{bars_info}}}")
 
             # Round 5 stability R2: emit one health_probe per cycle for the
             # daily SLA digest + ops dashboard P&L card.  A single fresh
@@ -1185,19 +1224,19 @@ def main():
 
             # 3. AI Analysis (every H4 = every 16 M15 cycles, or first run)
             if cycle == 1 or (time.time() - last_ai_update) > 14400:
-                print(f"  Running AI analysis...")
-                ai_analysis = run_ai_analysis(data)
+                print(f"  正在运行 AI 分析...")
+                ai_analysis = run_ai_analysis(data, ai_enabled=_ai_regime_runtime_enabled)
                 last_ai_update = time.time()
                 ai_dir = ai_analysis.get("ai_direction", ai_analysis.get("direction", "?"))
                 ai_conf = ai_analysis.get("ai_confidence", ai_analysis.get("confidence", 0))
-                print(f"  AI Direction: {ai_dir.upper()} ({ai_conf:.0%} confidence)")
+                print(f"  AI 大方向: {ai_dir.upper()} (置信度 {ai_conf:.0%})")
             else:
                 ai_dir = ai_analysis.get("ai_direction", ai_analysis.get("direction", "?"))
-                print(f"  AI Direction: {ai_dir.upper()} (cached)")
+                print(f"  AI 大方向: {ai_dir.upper()} (使用缓存)")
 
             # 4. Regime
             regime = classify_regime(data.get(Timeframe.D1), cfg=cfg)
-            print(f"  Regime: {regime}")
+            print(f"  市场环境: {regime}")
 
             # 4b. Detect SMC snapshots for HTF bias + range detection
             h1_df = data.get(Timeframe.H1)
@@ -1244,8 +1283,8 @@ def main():
                         dxy=_mb.dxy_bias,
                     )
                     print(
-                        f"  Macro bias: {macro_bias_value:+.4f} "
-                        f"(dir={_mb.direction}, sources={_mb.sources_available})"
+                        f"  宏观偏误: {macro_bias_value:+.4f} "
+                        f"(方向={_mb.direction}, 数据源={_mb.sources_available})"
                     )
                 except Exception as _macro_exc:
                     log_warn(
@@ -1260,7 +1299,7 @@ def main():
 
             # 5. Strategy (v1 trending setups — always generated)
             setups = aggregator.generate_setups(data, price)
-            print(f"  SMC Setups: {len(setups)}")
+            print(f"  SMC 形态信号: {len(setups)}")
 
             # 6. Dual-mode action routing
             session, _ = get_session_info(cfg=cfg)
@@ -1280,7 +1319,7 @@ def main():
                 m15_df=m15_df,
                 d1_df=d1_df,
                 ai_regime_assessment=getattr(aggregator, "_last_ai_assessment", None),
-                ai_mode_router_enabled=_path_cfg.ai_mode_router_enabled,
+                ai_mode_router_enabled=(_ai_runtime_enabled and _path_cfg.ai_mode_router_enabled),
                 ai_regime_trust_threshold=_path_cfg.ai_regime_trust_threshold,
             )
             # Round 5 T0 (P0-2b): quota record_open moved *after* successful
@@ -1439,19 +1478,19 @@ def main():
             }
             marker = action_colors.get(action.split()[0], "???")
             print()
-            print(f"  {marker} ACTION: {action} [{mode.mode.upper()}] {marker}")
+            print(f"  {marker} 执行动作: {action} [{mode.mode.upper()}] {marker}")
             print(f"  {reason}")
 
             # Display range bounds when detected (even in trending mode)
             if mode.range_bounds is not None:
                 rb = mode.range_bounds
-                print(f"  Range: ${rb.lower:.0f}-${rb.upper:.0f} | Width: ${rb.upper - rb.lower:.0f}")
+                print(f"  震荡区间: ${rb.lower:.0f}-${rb.upper:.0f} | 宽度: ${rb.upper - rb.lower:.0f}")
 
             if best and hasattr(best, "entry_signal"):
                 e = best.entry_signal
-                print(f"  Entry: ${e.entry_price:.2f} | SL: ${e.stop_loss:.2f} | TP: ${e.take_profit_1:.2f}")
+                print(f"  入场位: ${e.entry_price:.2f} | 止损: ${e.stop_loss:.2f} | 止盈: ${e.take_profit_1:.2f}")
             elif best and hasattr(best, "entry_price"):
-                print(f"  Entry: ${best.entry_price:.2f} | SL: ${best.stop_loss:.2f} | TP: ${best.take_profit:.2f}")
+                print(f"  入场位: ${best.entry_price:.2f} | 止损: ${best.stop_loss:.2f} | 止盈: ${best.take_profit:.2f}")
 
             # 7. Journal
             #    Round 4.6-H1: range ENTER 也要写 journal. 原代码只遍历 trending
@@ -1534,8 +1573,8 @@ def main():
                         session=session,
                     )
                     print(
-                        f"  [PAPER] Would submit: {best.direction.upper()} {position_size_lots} lots "
-                        f"@ {best.entry_price:.2f} SL={best.stop_loss:.2f} TP={best.take_profit:.2f}"
+                        f"  [纸面推演] 计划开仓: {best.direction.upper()} {position_size_lots} 手 "
+                        f"@ {best.entry_price:.2f} 止损={best.stop_loss:.2f} 止盈={best.take_profit:.2f}"
                     )
 
                 # Round 4.6-X + Round 5 T0 (P0-3): MT5 order_send via rugged wrapper
@@ -1575,8 +1614,8 @@ def main():
                             cap_ratio=margin_check.cap_ratio,
                         )
                         print(
-                            f"  [MARGIN_CAP] Gate blocked: {margin_check.reason} "
-                            f"(margin {margin_check.total_after:.2f} / equity {margin_check.current_equity:.2f})"
+                            f"  [保证金不足] 已拦截: {margin_check.reason} "
+                            f"(需用保证金 {margin_check.total_after:.2f} / 当前净值 {margin_check.current_equity:.2f})"
                         )
                         log_entry = {
                             "time": now.isoformat(),
@@ -1631,8 +1670,8 @@ def main():
                     if send_result.success:
                         _mt5_mode_tag = "LIVE_EXEC"
                         print(
-                            f"  [MT5] Order sent ✓ ticket={_mt5_ticket} "
-                            f"attempts={_mt5_send_attempts} dev={dyn_deviation}"
+                            f"  [MT5交易] 订单已发送 ✓ 订单号={_mt5_ticket} "
+                            f"尝试次数={_mt5_send_attempts} 滑点={dyn_deviation}"
                         )
                         log_info(
                             "mt5_order_sent",
@@ -1662,8 +1701,8 @@ def main():
                     else:
                         _mt5_mode_tag = f"MT5_FAIL_{_mt5_send_retcode}"
                         print(
-                            f"  [MT5] Order FAIL retcode={_mt5_send_retcode} "
-                            f"attempts={_mt5_send_attempts} msg={send_result.message}"
+                            f"  [MT5交易] 订单发送失败 错误码={_mt5_send_retcode} "
+                            f"尝试次数={_mt5_send_attempts} 错误信息={send_result.message}"
                         )
                         alert_critical(
                             "mt5_order_fail",
