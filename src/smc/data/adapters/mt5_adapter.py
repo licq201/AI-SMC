@@ -108,16 +108,18 @@ class MT5Adapter:
         login: int | None = None,
         password: str | None = None,
         server: str | None = None,
+        path: str | None = None,
         instrument: str = "XAUUSD",
         source_name: str = "mt5",
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        timeout_ms: int = 10_000,
+        timeout_ms: int = 60_000,
     ) -> None:
         self._mt5 = _import_mt5()
         self._login = login
         self._password = password
         self._server = server
+        self._path = path
         self._instrument = instrument
         self._source_name = source_name
         self._max_retries = max_retries
@@ -217,12 +219,14 @@ class MT5Adapter:
             ForexAdapterError: if the terminal is unavailable or login fails.
         """
         kwargs: dict[str, Any] = {"timeout": self._timeout_ms}
-        if self._login is not None:
+        if self._login and self._login > 0:
             kwargs["login"] = self._login
-        if self._password is not None:
-            kwargs["password"] = self._password
-        if self._server is not None:
-            kwargs["server"] = self._server
+            if self._password is not None:
+                kwargs["password"] = self._password
+            if self._server is not None:
+                kwargs["server"] = self._server
+        if self._path:
+            kwargs["path"] = self._path
 
         success = self._mt5.initialize(**kwargs)
         if not success:

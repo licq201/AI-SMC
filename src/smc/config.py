@@ -140,6 +140,10 @@ class SMCConfig(BaseSettings):
         default="",
         description="MetaTrader 5 broker server address.",
     )
+    mt5_path: str = Field(
+        default="",
+        description="Absolute path to terminal64.exe. Useful if IPC timeout occurs.",
+    )
 
     # ------------------------------------------------------------------
     # Trading

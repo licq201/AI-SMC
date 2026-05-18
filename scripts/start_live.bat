@@ -26,5 +26,5 @@ REM guarantees two stacked BUYs in a single session cannot repeat.
 set SMC_MAX_CONCURRENT_PER_SYMBOL=1
 set SMC_ANTI_STACK_COOLDOWN_MINUTES=60
 set SMC_RANGE_REVERSAL_CONFIRM_ENABLED=true
-cd /d C:\AI-SMC
+cd /d E:\bossquant\MQ5\AI-SMC
 .venv\Scripts\python.exe scripts\live_demo.py >> logs\live_stdout.log 2>> logs\live_stderr.log

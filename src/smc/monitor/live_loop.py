@@ -183,8 +183,12 @@ class LiveLoop:
         loop = asyncio.get_event_loop()
 
         # Register signal handlers for graceful shutdown
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self._request_stop)
+        try:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, self._request_stop)
+        except NotImplementedError:
+            # add_signal_handler is not implemented on Windows ProactorEventLoop
+            pass
 
         logger.info(
             "Live loop starting — instrument=%s, mode=%s",
@@ -195,7 +199,7 @@ class LiveLoop:
         try:
             # Get initial balance for daily loss tracking
             account = self._broker.get_account_info()
-            self._daily_start_balance = account.get("balance", 0.0)
+            self._daily_start_balance = getattr(account, "balance", 0.0) if not isinstance(account, dict) else account.get("balance", 0.0)
 
             while self._running:
                 await self._run_cycle()
@@ -220,7 +224,7 @@ class LiveLoop:
         """
         if self._daily_start_balance <= 0:
             account = self._broker.get_account_info()
-            self._daily_start_balance = account.get("balance", 0.0)
+            self._daily_start_balance = getattr(account, "balance", 0.0) if not isinstance(account, dict) else account.get("balance", 0.0)
 
         return await self._execute_cycle(bar_ts)
 
@@ -297,13 +301,16 @@ class LiveLoop:
 
             # 6. Health check
             account = self._broker.get_account_info()
-            daily_pnl = account.get("balance", 0.0) - self._daily_start_balance
+            current_balance = getattr(account, "balance", 0.0) if not isinstance(account, dict) else account.get("balance", 0.0)
+            daily_pnl = current_balance - self._daily_start_balance
             daily_pnl_pct = (daily_pnl / self._daily_start_balance * 100.0) if self._daily_start_balance > 0 else 0.0
+
+            margin_level = getattr(account, "margin_level", None) if not isinstance(account, dict) else account.get("margin_level")
 
             health = self._health_monitor.check_all(
                 broker_connected=True,
                 last_bar_ts=bar_ts,
-                margin_level_pct=account.get("margin_level"),
+                margin_level_pct=margin_level,
                 unreconciled_count=0,
                 daily_pnl_pct=daily_pnl_pct,
             )
@@ -319,7 +326,7 @@ class LiveLoop:
                 bar_close_ts=bar_ts,
                 instrument=self._instrument,
                 regime="unknown",
-                balance=account.get("balance", 0.0),
+                balance=current_balance,
             )
 
             self._last_bar_ts = bar_ts

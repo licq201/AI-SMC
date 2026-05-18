@@ -110,7 +110,15 @@ class MT5BrokerPort:
         # Resolve magic once at construction — every order uses the same value.
         self._magic: int = int(getattr(cfg, "magic", self._DEFAULT_MAGIC))
 
-        if not mt5.initialize(path=path, login=login, password=password, server=server):
+        kwargs: dict = {"timeout": 60000}
+        if path:
+            kwargs["path"] = path
+        if login and login > 0:
+            kwargs["login"] = login
+            kwargs["password"] = password
+            kwargs["server"] = server
+
+        if not mt5.initialize(**kwargs):
             code, msg = mt5.last_error()
             raise RuntimeError(f"MT5 initialization failed: [{code}] {msg}")
 
@@ -225,10 +233,13 @@ class MT5BrokerPort:
         logger.info("Position %d closed: lots=%.2f price=%.2f", ticket, close_lots, result.price)
         return OrderResult(success=True, ticket=ticket, fill_price=result.price)
 
-    def get_positions(self) -> tuple[PositionState, ...]:
+    def get_positions(self, symbol: str | None = None) -> tuple[PositionState, ...]:
         """Fetch all open positions from MT5."""
         mt5 = self._mt5
-        positions = mt5.positions_get()
+        kwargs = {}
+        if symbol:
+            kwargs["symbol"] = symbol
+        positions = mt5.positions_get(**kwargs)
         if positions is None:
             return ()
 
@@ -251,6 +262,13 @@ class MT5BrokerPort:
                 )
             )
         return tuple(result)
+
+    def get_current_price(self, symbol: str) -> float | None:
+        """Get the current bid price for a symbol."""
+        tick = self._mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return None
+        return tick.bid
 
     def get_account_info(self) -> AccountInfo:
         """Fetch account info from MT5."""

@@ -664,11 +664,28 @@ def cmd_live(
             data_fetcher = MT5MockAdapter(fixtures_dir=cfg.data_dir, instrument=instrument)
         else:
             # Real MT5 — import conditionally
-            err_console.print(
-                "[red]Real MT5 broker not yet wired. "
-                "Set SMC_MT5_MOCK=1 for paper trading.[/red]"
-            )
-            raise typer.Exit(code=1)
+            from smc.execution.executor import MT5BrokerPort
+            from smc.data.adapters.mt5_adapter import MT5Adapter
+            
+            try:
+                broker = MT5BrokerPort(
+                    login=cfg.mt5_login,
+                    password=cfg.mt5_password.get_secret_value(),
+                    server=cfg.mt5_server,
+                    path=cfg.mt5_path if cfg.mt5_path else None,
+                    cfg=cfg
+                )
+                data_fetcher = MT5Adapter(
+                    login=cfg.mt5_login,
+                    password=cfg.mt5_password.get_secret_value(),
+                    server=cfg.mt5_server,
+                    path=cfg.mt5_path if cfg.mt5_path else None,
+                    instrument=instrument
+                )
+                data_fetcher.initialize()
+            except Exception as e:
+                err_console.print(f"[red]Failed to initialize MT5: {e}[/red]")
+                raise typer.Exit(code=1) from e
 
         # Build strategy
         detector = SMCDetector(swing_length=cfg.swing_length)
@@ -701,6 +718,8 @@ def cmd_live(
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutdown requested by user.[/yellow]")
     except Exception as exc:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
         err_console.print(f"[red]Live loop failed: {exc}[/red]")
         raise typer.Exit(code=1) from exc
 
