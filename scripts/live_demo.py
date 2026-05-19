@@ -148,6 +148,7 @@ from smc.strategy.htf_bias import compute_htf_bias, htf_bias_tier
 from smc.strategy.smc_orderflow import build_smc_orderflow
 from smc.strategy.smc_trace import build_smc_trace
 from smc.monitor.timing import next_bar_close
+from smc.monitor.journal_files import ensure_journal_file
 from smc.monitor.structured_log import crit as log_crit, warn as log_warn, info as log_info
 from smc.monitor.critical_alerter import alert_critical
 # Round 5 stability R1: MT5 handle auto-heal watchdog — detects IPC handle rot
@@ -943,7 +944,7 @@ def main():
     )
     breakout_det = BreakoutDetector()
 
-    JOURNAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ensure_journal_file(JOURNAL_PATH)
 
     running = True
     def stop(sig, frame):
@@ -1009,6 +1010,10 @@ def main():
         if wait > 0:
             print(f"[{now.strftime('%H:%M:%S')} UTC] Cycle {cycle}: next M15 at {nxt.strftime('%H:%M')} ({wait:.0f}s)")
             try:
+                waiting_price = None
+                tick = mt5.symbol_info_tick(cfg.mt5_path)
+                if tick is not None:
+                    waiting_price = float(tick.bid)
                 atomic_write_json(
                     STATE_PATH,
                     build_waiting_state(
@@ -1018,6 +1023,7 @@ def main():
                         symbol=SYMBOL,
                         ai_enabled=_ai_runtime_enabled,
                         ai_regime_enabled=_ai_regime_runtime_enabled,
+                        current_price=waiting_price,
                     ),
                 )
             except Exception as _waiting_state_exc:

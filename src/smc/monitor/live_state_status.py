@@ -18,6 +18,7 @@ def build_waiting_state(
     symbol: str,
     ai_enabled: bool,
     ai_regime_enabled: bool,
+    current_price: float | None = None,
 ) -> dict[str, Any]:
     """Build a fresh dashboard state while live_demo waits for M15 close."""
     reason = "等待下一根 M15 K 线收盘后计算交易信号"
@@ -26,7 +27,7 @@ def build_waiting_state(
         "timestamp": now.isoformat(),
         "runtime_status": "waiting_next_m15",
         "symbol": symbol,
-        "price": None,
+        "price": current_price,
         "action": "HOLD",
         "reason": reason,
         "regime": "waiting",

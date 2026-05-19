@@ -702,7 +702,7 @@
       text: "上下边界还没被确认碰过 2 次，等再摸一次" },
     { match: (s) => s.trading_mode === "v1_passthrough",
       text: "AI 看不清方向，交给趋势策略判断" },
-    { match: (s) => s.range_diagnostic?.detect?.method == null,
+    { match: (s) => s.runtime_status !== "waiting_next_m15" && s.range_diagnostic?.detect?.method == null,
       text: "找不到可交易区间，市场可能在单边趋势中" },
   ];
   const SOURCE_LABEL = { orderblock: "订单块", swing: "摆动高低", donchian: "Donchian 通道" };
@@ -1047,8 +1047,12 @@
       },
 
       get rawDiagnostic() {
-        if (!this.state?.range_diagnostic) return "（本轮检查暂无区间诊断）";
-        return JSON.stringify(this.state.range_diagnostic, null, 2);
+        const payload = {
+          range_diagnostic: this.state?.range_diagnostic || null,
+          smc_diagnostic: this.state?.smc_diagnostic || null,
+        };
+        if (!payload.range_diagnostic && !payload.smc_diagnostic) return "（本轮检查暂无诊断）";
+        return JSON.stringify(payload, null, 2);
       },
 
       get smcTrace() { return this.state?.smc_trace || null; },

@@ -35,6 +35,24 @@ def test_build_waiting_state_is_fresh_hold_snapshot() -> None:
     assert state["smc_trace"]["decision"]["action"] == "HOLD"
 
 
+def test_build_waiting_state_keeps_latest_price_for_dashboard() -> None:
+    now = datetime(2026, 5, 18, 15, 21, 12, tzinfo=timezone.utc)
+    next_close = datetime(2026, 5, 18, 15, 30, 0, tzinfo=timezone.utc)
+
+    state = build_waiting_state(
+        cycle=1,
+        now=now,
+        next_bar_close=next_close,
+        symbol="XAUUSD",
+        ai_enabled=True,
+        ai_regime_enabled=True,
+        current_price=2350.8,
+    )
+
+    assert state["runtime_status"] == "waiting_next_m15"
+    assert state["price"] == 2350.8
+
+
 def test_live_demo_save_state_includes_smc_orderflow(monkeypatch, tmp_path) -> None:
     monkeypatch.setitem(sys.modules, "MetaTrader5", SimpleNamespace())
     monkeypatch.setattr(sys, "argv", ["live_demo.py"])
