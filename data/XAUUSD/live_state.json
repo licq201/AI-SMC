@@ -1,15 +1,15 @@
 {
-  "cycle": 13,
-  "timestamp": "2026-05-19T07:15:01.885188+00:00",
-  "price": 4548.69,
+  "cycle": 1,
+  "timestamp": "2026-05-19T08:40:43.539507+00:00",
+  "price": 4542.65,
   "action": "HOLD",
-  "reason": "RANGING but no boundary setups | Range $4480-$4589",
+  "reason": "AI BEARISH (50%) but no SMC setups found",
   "regime": "trending",
   "ai_direction": "bearish",
   "ai_confidence": 0.5,
   "setups_count": 0,
   "volatility": "HIGH",
-  "trading_mode": "ranging",
+  "trading_mode": "trending",
   "blocked_reason": null,
   "range_bounds": {
     "upper": 4589.09,
@@ -37,10 +37,10 @@
     },
     "guards": {
       "stage": "bounds_only",
-      "session": "ASIAN_LONDON_TRANSITION",
-      "is_asian_profile": true,
-      "min_width_required": 400.0,
-      "min_duration_required": 8,
+      "session": "LONDON",
+      "is_asian_profile": false,
+      "min_width_required": 800.0,
+      "min_duration_required": 12,
       "width_points": 10861.0,
       "width_pass": true,
       "touches_count": 13,
@@ -51,7 +51,7 @@
       "all_passed": true
     },
     "setups": {
-      "current_price": 4548.57,
+      "current_price": 4542.12,
       "lower_boundary": 4480.48,
       "upper_boundary": 4589.09,
       "boundary_band_price": 32.583,
@@ -63,8 +63,8 @@
       "short_setup_built": false,
       "setup_count": 0,
       "reason_if_zero": "middle",
-      "distance_to_upper_pct": 0.3730779854525406,
-      "distance_to_lower_pct": 0.6269220145474648,
+      "distance_to_upper_pct": 0.4324647822484141,
+      "distance_to_lower_pct": 0.5675352177515912,
       "ai_regime_gate_block": {},
       "ai_regime_label": "TREND_DOWN",
       "ai_regime_confidence": 0.8
@@ -73,7 +73,7 @@
   "smc_diagnostic": {
     "htf_bias_direction": "bearish",
     "htf_bias_confidence": 0.45,
-    "htf_bias_rationale": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2235%/bar (bearish).",
+    "htf_bias_rationale": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2244%/bar (bearish).",
     "stage_reject": "all_entries_failed (zones=3, min_conf=0.45)",
     "final_count": 0,
     "ai_regime_stage": "deterministic_prefilter",
@@ -88,28 +88,28 @@
     },
     "zone_details": [
       {
-        "high": 4880.45,
-        "low": 4854.94,
+        "high": 4873.43,
+        "low": 4863.71,
         "direction": "short",
-        "dist_from_price": 306.37,
+        "dist_from_price": 325.67,
         "in_expanded_zone": false
       },
       {
         "high": 4718.84,
         "low": 4691.08,
         "direction": "short",
-        "dist_from_price": 142.51,
+        "dist_from_price": 153.04,
         "in_expanded_zone": false
       },
       {
         "high": 4816.92,
         "low": 4810.6,
         "direction": "short",
-        "dist_from_price": 262.03,
+        "dist_from_price": 272.56,
         "in_expanded_zone": false
       }
     ],
-    "current_price": 4548.57,
+    "current_price": 4538.04,
     "min_confluence": 0.45
   },
   "position_size": 0.0,
@@ -124,7 +124,7 @@
         "status": "passed",
         "direction": "bearish",
         "confidence": 0.45,
-        "explanation": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2235%/bar (bearish)."
+        "explanation": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2244%/bar (bearish)."
       },
       {
         "name": "h1_zone",
@@ -163,7 +163,7 @@
     ],
     "decision": {
       "action": "HOLD",
-      "reason": "RANGING but no boundary setups | Range $4480-$4589",
+      "reason": "AI BEARISH (50%) but no SMC setups found",
       "setup_count": 0
     },
     "ai": {
@@ -192,10 +192,10 @@
       },
       "guards": {
         "stage": "bounds_only",
-        "session": "ASIAN_LONDON_TRANSITION",
-        "is_asian_profile": true,
-        "min_width_required": 400.0,
-        "min_duration_required": 8,
+        "session": "LONDON",
+        "is_asian_profile": false,
+        "min_width_required": 800.0,
+        "min_duration_required": 12,
         "width_points": 10861.0,
         "width_pass": true,
         "touches_count": 13,
@@ -206,7 +206,7 @@
         "all_passed": true
       },
       "setups": {
-        "current_price": 4548.57,
+        "current_price": 4542.12,
         "lower_boundary": 4480.48,
         "upper_boundary": 4589.09,
         "boundary_band_price": 32.583,
@@ -218,8 +218,8 @@
         "short_setup_built": false,
         "setup_count": 0,
         "reason_if_zero": "middle",
-        "distance_to_upper_pct": 0.3730779854525406,
-        "distance_to_lower_pct": 0.6269220145474648,
+        "distance_to_upper_pct": 0.4324647822484141,
+        "distance_to_lower_pct": 0.5675352177515912,
         "ai_regime_gate_block": {},
         "ai_regime_label": "TREND_DOWN",
         "ai_regime_confidence": 0.8
@@ -239,7 +239,7 @@
         "label": "\u7ed3\u6784",
         "status": "passed",
         "title": "\u5927\u5468\u671f\u504f\u7a7a",
-        "detail": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2235%/bar (bearish)."
+        "detail": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2244%/bar (bearish)."
       },
       {
         "key": "zone",
@@ -251,7 +251,7 @@
       {
         "key": "liquidity",
         "label": "\u6d41\u52a8\u6027",
-        "status": "waiting",
+        "status": "passed",
         "title": "\u89c2\u5bdf\u6d41\u52a8\u6027\u4f4d\u7f6e",
         "detail": "\u533a\u95f4/\u6d41\u52a8\u6027\u6765\u6e90\uff1adonchian_channel\u3002"
       },
@@ -261,6 +261,20 @@
         "status": "waiting",
         "title": "\u7b49\u5f85 M15 \u89e6\u53d1 (BOS/CHoCH/FVG)",
         "detail": "\u65e0\u89e6\u53d1 3\uff0c\u5171\u632f\u4e0d\u8db3 0\uff0c\u89e6\u53d1\u5668\u4e0d\u5339\u914d 0\u3002"
+      },
+      {
+        "key": "regime",
+        "label": "\u73af\u5883\u8fc7\u6ee4",
+        "status": "waiting",
+        "title": "Regime: deterministic_prefilter",
+        "detail": "\u7b49\u5f85 M15 \u89e6\u53d1\u540e\u8fdb\u884c\u73af\u5883\u8fc7\u6ee4\u3002"
+      },
+      {
+        "key": "ai_review",
+        "label": "AI \u590d\u6838",
+        "status": "skipped",
+        "title": "AI \u590d\u6838\u5df2\u8df3\u8fc7",
+        "detail": "\u6709\u5019\u9009\u4ea4\u6613\u65f6\u624d\u8fdb\u884c AI regime \u590d\u6838\uff1b\u65e0\u5019\u9009\u65f6\u8df3\u8fc7\u4ee5\u907f\u514d\u65e0\u6548\u7b97\u529b\u6d88\u8017\u3002"
       },
       {
         "key": "risk",
@@ -292,7 +306,7 @@
       {
         "timeframe": "Regime",
         "label": "\u73af\u5883\u8fc7\u6ee4",
-        "status": "passed",
+        "status": "waiting",
         "explanation": "Regime \u9636\u6bb5\uff1adeterministic_prefilter\u3002"
       },
       {
@@ -306,17 +320,17 @@
       {
         "kind": "current_price",
         "label": "\u5f53\u524d\u4ef7",
-        "price": 4548.57,
+        "price": 4542.65,
         "side": "current",
         "detail": "\u672c\u8f6e\u5206\u6790\u4ef7\u683c"
       },
       {
         "kind": "zone",
         "label": "H1 \u7a7a\u5934\u4ea4\u6613\u533a",
-        "low": 4854.94,
-        "high": 4880.45,
+        "low": 4863.71,
+        "high": 4873.43,
         "side": "above",
-        "detail": "\u8ddd\u5f53\u524d\u4ef7 306.37\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
+        "detail": "\u8ddd\u5f53\u524d\u4ef7 325.67\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
       },
       {
         "kind": "zone",
@@ -324,7 +338,7 @@
         "low": 4691.08,
         "high": 4718.84,
         "side": "above",
-        "detail": "\u8ddd\u5f53\u524d\u4ef7 142.51\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
+        "detail": "\u8ddd\u5f53\u524d\u4ef7 153.04\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
       },
       {
         "kind": "zone",
@@ -332,7 +346,7 @@
         "low": 4810.6,
         "high": 4816.92,
         "side": "above",
-        "detail": "\u8ddd\u5f53\u524d\u4ef7 262.03\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
+        "detail": "\u8ddd\u5f53\u524d\u4ef7 272.56\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
       }
     ],
     "debug": {
@@ -340,5 +354,5 @@
     }
   },
   "runtime_status": "waiting_next_m15",
-  "next_bar_close": "2026-05-19T07:30:00+00:00"
+  "next_bar_close": "2026-05-19T08:45:00+00:00"
 }

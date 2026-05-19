@@ -1032,6 +1032,17 @@ def main():
                     existing_state["cycle"] = cycle
                     if waiting_price is not None:
                         existing_state["price"] = waiting_price
+                    try:
+                        from smc.strategy.smc_orderflow import build_smc_orderflow
+                        existing_state["smc_orderflow"] = build_smc_orderflow(
+                            smc_trace=existing_state.get("smc_trace"),
+                            smc_diagnostic=existing_state.get("smc_diagnostic"),
+                            range_diagnostic=existing_state.get("range_diagnostic"),
+                            best_setup=existing_state.get("best_setup"),
+                            current_price=existing_state.get("price"),
+                        )
+                    except Exception as _orderflow_regen_exc:
+                        log_warn("waiting_state_orderflow_regen_failed", exc=str(_orderflow_regen_exc))
                     atomic_write_json(STATE_PATH, existing_state)
                 else:
                     atomic_write_json(

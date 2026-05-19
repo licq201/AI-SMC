@@ -378,7 +378,7 @@
 
       <template x-if="smcOrderflow">
         <div>
-          <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
             <template x-for="item in smcOrderflowRadar" :key="item.key">
               <div class="p-3 rounded-lg card-hi border-l-4" :style="{ borderLeftColor: smcOrderflowStatusColor(item.status) }">
                 <div class="flex items-center justify-between gap-2">
@@ -393,7 +393,7 @@
 
           <details class="mt-4">
             <summary class="text-xs text-muted hover:text-text select-none">学习每一层 SMC 判断</summary>
-            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
               <template x-for="step in smcOrderflowTimeline" :key="(step.timeframe || '') + ':' + (step.label || '')">
                 <div class="p-3 rounded-lg card-hi">
                   <div class="flex items-center justify-between">

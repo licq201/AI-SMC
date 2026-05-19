@@ -254,6 +254,40 @@ def build_smc_orderflow(
     entry_status = "passed" if has_best_setup or setup_count > 0 else "skipped" if zone_status == "blocked" else "waiting"
     risk_status = "passed" if has_best_setup else "waiting" if readiness == "waiting" else "skipped"
 
+    # Calculate current stage in the pipeline
+    if has_best_setup or setup_count > 0:
+        current_stage = "decision"
+    elif stage_reject in {"htf_bias_neutral", "legacy_ranging_gate"}:
+        current_stage = "htf_bias"
+    elif stage_reject in {"h1_snapshot_missing", "no_h1_zones"}:
+        current_stage = "h1_zone"
+    elif stage_reject in {"m15_snapshot_missing"} or (stage_reject or "").startswith("all_entries_failed"):
+        current_stage = "m15_entry"
+    elif (stage_reject or "").startswith("direction_filter"):
+        current_stage = "regime_filter"
+    elif (stage_reject or "").startswith("ai_candidate_review_blocked"):
+        current_stage = "ai_review"
+    else:
+        current_stage = "decision"
+
+    # Map status for regime_filter
+    if current_stage == "regime_filter":
+        regime_status = "blocked"
+    elif current_stage in {"ai_review", "decision"}:
+        regime_status = "passed"
+    elif current_stage == "m15_entry":
+        regime_status = "waiting"
+    else:
+        regime_status = "skipped"
+
+    # Map status for ai_review
+    if current_stage == "ai_review":
+        ai_status = "blocked"
+    elif current_stage == "decision":
+        ai_status = "passed" if smc.get("ai_regime_stage") == "candidate_review" else "skipped"
+    else:
+        ai_status = "skipped"
+
     entry_none = _int(zone_rejects.get("entry_none"))
     confluence_low = _int(zone_rejects.get("confluence_low"))
     trigger_filter = _int(zone_rejects.get("trigger_filter"))
@@ -278,7 +312,7 @@ def build_smc_orderflow(
         _status_item(
             "liquidity",
             "流动性",
-            "waiting",
+            "waiting" if zone_status == "waiting" else "passed" if zone_count > 0 else "skipped",
             "观察流动性位置",
             _liquidity_detail(range_diag),
         ),
@@ -288,6 +322,20 @@ def build_smc_orderflow(
             entry_status,
             "M15 入场确认 (BOS/CHoCH/FVG)" if entry_status == "passed" else "等待 M15 触发 (BOS/CHoCH/FVG)",
             f"无触发 {entry_none}，共振不足 {confluence_low}，触发器不匹配 {trigger_filter}。",
+        ),
+        _status_item(
+            "regime",
+            "环境过滤",
+            regime_status,
+            f"Regime: {smc.get('ai_regime_stage', 'deterministic_prefilter')}",
+            f"通过 AI Regime 过滤环境限制。" if regime_status == "passed" else f"环境过滤中：{smc.get('ai_regime_stage', 'deterministic_prefilter')}。" if regime_status == "blocked" else "等待 M15 触发后进行环境过滤。" if regime_status == "waiting" else "尚未进入环境过滤阶段。",
+        ),
+        _status_item(
+            "ai_review",
+            "AI 复核",
+            ai_status,
+            "AI 复核已通过" if ai_status == "passed" else "AI 复核已跳过" if ai_status == "skipped" else "等待 AI 复核",
+            "有候选交易时才进行 AI regime 复核；无候选时跳过以避免无效算力消耗。",
         ),
         _status_item(
             "risk",
@@ -325,13 +373,13 @@ def build_smc_orderflow(
         {
             "timeframe": "Regime",
             "label": "环境过滤",
-            "status": "passed",
+            "status": regime_status,
             "explanation": f"Regime 阶段：{smc.get('ai_regime_stage', 'deterministic_prefilter')}。",
         },
         {
             "timeframe": "AI",
             "label": "AI 复核",
-            "status": "passed" if smc.get("ai_regime_stage") == "candidate_review" else "skipped",
+            "status": ai_status,
             "explanation": "有候选交易时才进行 AI regime 复核；无候选时跳过以避免无效算力消耗。",
         },
     ]
