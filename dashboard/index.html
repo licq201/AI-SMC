@@ -54,7 +54,7 @@
         <div class="text-xs text-muted num" x-text="accountLabel"></div>
       </div>
     </div>
-    <!-- Symbol switcher (only shown when multiple symbols are registered) -->
+    <!-- 品种切换（注册了多个品种时显示） -->
     <div class="flex gap-2" x-show="availableSymbols.length > 1">
       <template x-for="sym in availableSymbols" :key="sym">
         <button
@@ -111,7 +111,7 @@
     </div>
     <!-- 今日 P&L -->
     <div class="card p-5 md:p-6">
-      <div class="text-xs uppercase tracking-wider text-muted">今日 P&L</div>
+      <div class="text-xs uppercase tracking-wider text-muted">今日盈亏</div>
       <div class="mt-3 num text-4xl md:text-5xl font-bold" :style="{ color: pnlSummary.color }" x-text="pnlSummary.label"></div>
       <div class="mt-2 text-sm text-muted" x-text="pnlSummary.sub"></div>
     </div>
@@ -123,11 +123,11 @@
     </div>
   </div>
 
-  <!-- Round 6 B4: Active Trades (实时持仓 + per-ticket trail preset) -->
+  <!-- Round 6 B4: Active Trades (实时持仓 + 每单移动止损预设) -->
   <div x-show="positions && positions.length > 0" class="card p-5 md:p-6">
     <div class="flex items-baseline justify-between mb-3">
       <div>
-        <div class="text-xs uppercase tracking-wider text-muted">实时持仓 · Trail 预设</div>
+        <div class="text-xs uppercase tracking-wider text-muted">实时持仓 · 移动止损预设</div>
         <div class="text-xs text-muted mt-0.5">每 5 秒刷新 · 来自 /api/positions</div>
       </div>
       <div class="text-xs num text-muted">共 <span x-text="positions.length"></span> 笔</div>
@@ -136,9 +136,9 @@
       <table class="w-full text-sm">
         <thead class="text-xs text-muted uppercase tracking-wider">
           <tr class="text-left border-b border-slate-700/40">
-            <th class="py-2 pr-3">Leg</th>
-            <th class="py-2 pr-3">Position</th>
-            <th class="py-2 pr-3">Trail</th>
+            <th class="py-2 pr-3">账户分组</th>
+            <th class="py-2 pr-3">持仓</th>
+            <th class="py-2 pr-3">移动止损</th>
           </tr>
         </thead>
         <tbody>
@@ -168,11 +168,11 @@
     </div>
   </div>
 
-  <!-- Round 5 O2: 今日 P&L by leg -->
+  <!-- Round 5 O2: 今日分组盈亏 -->
   <div class="card p-5 md:p-6">
     <div class="flex items-baseline justify-between mb-3">
       <div>
-        <div class="text-xs uppercase tracking-wider text-muted">今日 P&L (per leg)</div>
+        <div class="text-xs uppercase tracking-wider text-muted">今日分组盈亏</div>
         <div class="text-xs text-muted mt-0.5" x-text="pnlLegSource"></div>
       </div>
       <div class="num text-3xl md:text-4xl font-bold" :style="{ color: pnlLegTotalColor }" x-text="pnlLegTotalLabel"></div>
@@ -191,21 +191,21 @@
     </div>
   </div>
 
-  <!-- Round 5 O1: AI Latest Reasoning -->
+  <!-- Round 5 O1: AI 最新判断 -->
   <div class="card p-5 md:p-6 border-l-4" style="border-left-color: #A78BFA">
     <div class="flex items-center justify-between mb-3">
       <div>
-        <div class="text-xs uppercase tracking-wider text-muted">AI 最新识别 (regime)</div>
+        <div class="text-xs uppercase tracking-wider text-muted">AI 最新市场环境判断</div>
         <div class="text-xs text-muted mt-0.5" x-text="regimeHeader"></div>
       </div>
       <div class="text-xs text-muted">每 30 秒刷新</div>
     </div>
-    <div x-show="regimeEvents.length === 0" class="text-sm text-muted py-4">暂无 regime 分类事件</div>
+    <div x-show="regimeEvents.length === 0" class="text-sm text-muted py-4">暂无 AI 市场环境记录</div>
     <template x-if="regimeEvents.length > 0">
       <div>
         <!-- 最新一条 — 大号展示 -->
         <div class="flex items-baseline gap-3 flex-wrap">
-          <span class="num text-2xl md:text-3xl font-bold" :style="{ color: regimeColor(regimeEvents[0].regime) }" x-text="regimeEvents[0].regime"></span>
+          <span class="num text-2xl md:text-3xl font-bold" :style="{ color: regimeColor(regimeEvents[0].regime) }" x-text="regimeLabel(regimeEvents[0].regime)"></span>
           <span class="text-sm" :style="{ color: directionColor(regimeEvents[0].direction) }" x-text="directionLabel(regimeEvents[0].direction)"></span>
           <span class="text-xs text-muted num" x-text="'置信度 ' + ((regimeEvents[0].confidence || 0) * 100).toFixed(0) + '%'"></span>
         </div>
@@ -223,7 +223,7 @@
             <template x-for="ev in regimeEvents.slice(1)" :key="ev.ts">
               <li class="flex items-center gap-2 num">
                 <span class="text-muted" x-text="formatTime(ev.ts)"></span>
-                <span class="font-medium" :style="{ color: regimeColor(ev.regime) }" x-text="ev.regime"></span>
+                <span class="font-medium" :style="{ color: regimeColor(ev.regime) }" x-text="regimeLabel(ev.regime)"></span>
                 <span class="text-muted" x-text="'(' + ((ev.confidence || 0) * 100).toFixed(0) + '%)'"></span>
                 <span class="text-muted" x-text="directionLabel(ev.direction)"></span>
               </li>
@@ -277,7 +277,7 @@
       </div>
       <div>
         <div class="num text-2xl md:text-3xl font-bold" :class="(digest?.pre_write_gate_blocks || 0) > 0 ? 'text-warn' : ''" x-text="digest?.pre_write_gate_blocks || 0"></div>
-        <div class="text-xs text-muted mt-1">风控阻挡 (保证金+Asian+DD)</div>
+        <div class="text-xs text-muted mt-1">风控阻挡（保证金 + 亚盘 + 回撤）</div>
       </div>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 pt-3 border-t border-slate-700">
@@ -290,11 +290,11 @@
         <div class="num font-medium" :class="digest?.consec_loss_halt_tripped ? 'text-short' : ''" x-text="digest?.guards_current?.consec_loss?.consec_losses || 0"></div>
       </div>
       <div class="text-xs">
-        <div class="text-muted">Asian 配额</div>
+        <div class="text-muted">亚盘配额</div>
         <div class="num font-medium" :class="digest?.guards_current?.asian_quota?.exhausted_today ? 'text-short' : 'text-long'" x-text="digest?.guards_current?.asian_quota?.exhausted_today ? '已用' : '可用'"></div>
       </div>
       <div class="text-xs">
-        <div class="text-muted">Phase1a Breaker</div>
+        <div class="text-muted">第一阶段断路器</div>
         <div class="num font-medium" :class="digest?.phase1a_breaker_tripped ? 'text-short' : ''" x-text="digest?.phase1a_breaker_tripped ? '已触发' : '正常'"></div>
       </div>
     </div>
@@ -317,14 +317,14 @@
         <div class="text-xs text-muted mt-1" x-text="guardLabel(guards?.consec_halt)"></div>
       </div>
       <div class="p-3 rounded-lg card-hi" :style="{ borderLeft: '3px solid ' + guardColor(guards?.phase1a_breaker?.status) }">
-        <div class="text-xs text-muted mb-1">Phase1a 断路器</div>
+        <div class="text-xs text-muted mb-1">第一阶段断路器</div>
         <div class="num text-lg font-bold" :style="{ color: guardColor(guards?.phase1a_breaker?.status) }">
           <span x-text="guards?.phase1a_breaker?.losses || 0"></span> 单
         </div>
         <div class="text-xs text-muted mt-1">PnL $<span x-text="(guards?.phase1a_breaker?.pnl_usd ?? 0).toFixed(2)"></span></div>
       </div>
       <div class="p-3 rounded-lg card-hi" :style="{ borderLeft: '3px solid ' + guardColor(guards?.asian_range_quota?.status) }">
-        <div class="text-xs text-muted mb-1">Asian 配额</div>
+        <div class="text-xs text-muted mb-1">亚盘配额</div>
         <div class="num text-lg font-bold" :style="{ color: guardColor(guards?.asian_range_quota?.status) }" x-text="guards?.asian_range_quota?.exhausted ? '已用' : '可用'"></div>
         <div class="text-xs text-muted mt-1" x-text="guards?.asian_range_quota?.last_open_date || '从未开过'"></div>
       </div>
@@ -474,9 +474,9 @@
           </div>
           <div class="num text-lg" x-text="'$' + formatNum(t.entry)"></div>
           <div class="mt-1 text-xs text-muted flex gap-3 num">
-            <span>SL $<span x-text="formatNum(t.sl)"></span></span>
-            <span>TP $<span x-text="formatNum(t.tp1)"></span></span>
-            <span :class="(t.rr_ratio||0) >= 1.2 ? 'text-long' : 'text-warn'" x-text="'RR ' + (t.rr_ratio||0).toFixed(2)"></span>
+            <span>止损 $<span x-text="formatNum(t.sl)"></span></span>
+            <span>止盈 $<span x-text="formatNum(t.tp1)"></span></span>
+            <span :class="(t.rr_ratio||0) >= 1.2 ? 'text-long' : 'text-warn'" x-text="'盈亏比 ' + (t.rr_ratio||0).toFixed(2)"></span>
           </div>
           <div class="mt-1 text-xs text-muted" x-text="aiAgreeLabel(t) + ' · ' + translateTrigger(t.trigger)"></div>
           <div class="mt-1"><span class="px-2 py-0.5 rounded text-xs font-medium" :class="modeBadgeClass(t)" x-text="modeBadgeLabel(t)"></span></div>
@@ -591,7 +591,7 @@
     <div class="flex items-center justify-between gap-4 flex-wrap">
       <div class="text-sm text-muted">
         <div>改动会写入 <code class="text-accent num">data/user_config.json</code></div>
-        <div class="text-xs mt-1">下一个 cycle (15 分钟内) 生效。不影响已开仓位。</div>
+        <div class="text-xs mt-1">下一个 15 分钟检查周期内生效。不影响已开仓位。</div>
         <div class="text-xs mt-2" x-show="config.updated_at">最后生效: <span class="num" x-text="formatTime(config.updated_at)"></span></div>
       </div>
       <div class="flex gap-2">
@@ -615,7 +615,7 @@
   <div class="card p-6 max-w-md w-full">
     <div class="text-lg font-semibold mb-2" x-text="tradingPaused ? '确定恢复交易？' : '确定暂停交易？'"></div>
     <div class="text-sm text-muted mb-5" x-text="tradingPaused
-      ? '系统将在下个 cycle 恢复按策略开仓。已有持仓不受影响。'
+      ? '系统将在下一个 15 分钟检查周期恢复按策略开仓。已有持仓不受影响。'
       : '系统将停止开新仓。已开仓位不会自动平仓，需要在 MT5 手动处理。'"></div>
     <div class="flex gap-2 justify-end">
       <button @click="confirmKillSwitch = false" class="px-4 py-2 text-sm text-muted hover:text-text">取消</button>
@@ -628,7 +628,7 @@
 </div>
 
 <footer class="text-center py-6 text-xs text-muted">
-  东方6# AI-SMC Dashboard · 每 5 秒自动刷新 · <a href="https://github.com/ChristopherCC-Liu" class="hover:text-text underline">GitHub</a>
+  东方6# AI-SMC 盯盘台 · 每 5 秒自动刷新 · <a href="https://github.com/ChristopherCC-Liu" class="hover:text-text underline">项目主页</a>
 </footer>
 
 <script>
@@ -652,7 +652,7 @@
       text: "找不到可交易区间，市场可能在单边趋势中" },
   ];
   const SOURCE_LABEL = { orderblock: "订单块", swing: "摆动高低", donchian: "Donchian 通道" };
-  const AI_DIR_LABEL = { bullish: "看多", bearish: "看空", neutral: "中性", "?": "N/A" };
+  const AI_DIR_LABEL = { bullish: "看多", bearish: "看空", neutral: "中性", "?": "暂无" };
 
   const DEFAULT_CONFIG = {
     risk: { boundary_band_pct: 0.30, min_rr_ratio: 1.2, asian_daily_quota: 2 },
@@ -824,7 +824,7 @@
           });
           const j = await r.json();
           if (r.ok) {
-            this.saveMessage = "已保存，下个 cycle 生效";
+            this.saveMessage = "已保存，下一个 15 分钟检查周期内生效";
             this.saveError = false;
             this.loadConfigFromServer();
           } else {
@@ -900,7 +900,7 @@
           return {
             label: (isLong ? "多单 " : "空单 ") + lots + " 手 @ $" + entry,
             color: isLong ? "#10B981" : "#EF4444",
-            sub: "实时 MT5 持仓 · ticket " + p.ticket,
+            sub: "实时 MT5 持仓 · 订单号 " + p.ticket,
           };
         }
         const legacy = this.livePosition;
@@ -959,7 +959,7 @@
             key: "mt5",
             color: this.state ? "#10B981" : "#EF4444",
             title: "MT5 连接",
-            detail: this.state ? "live_state 已读取 · cycle " + (this.state.cycle ?? "?") : "未收到状态文件",
+            detail: this.state ? "状态文件已读取 · 第 " + (this.state.cycle ?? "?") + " 轮" : "未收到状态文件",
           },
           {
             key: "fresh",
@@ -993,7 +993,7 @@
       },
 
       get rawDiagnostic() {
-        if (!this.state?.range_diagnostic) return "（本 cycle 无 range_diagnostic）";
+        if (!this.state?.range_diagnostic) return "（本轮检查暂无区间诊断）";
         return JSON.stringify(this.state.range_diagnostic, null, 2);
       },
 
@@ -1057,7 +1057,7 @@
       get drawdownDetail() {
         const dd = this.guards?.drawdown_guard;
         if (!dd) return "";
-        if (dd.source !== "live_state") return "未采集（Sprint 2 soft-dep）";
+        if (dd.source !== "live_state") return "暂未采集";
         const limit = dd.max_daily_loss_pct;
         return `/ 限额 ${limit}%`;
       },
@@ -1097,9 +1097,9 @@
         // PNL_LEG_BY_COMPOSITE in smc.monitor.dashboard_feeds.
         const symbol = pos.symbol || "";
         const magic = Number(pos.magic || 0);
-        if (symbol.includes("XAU") && magic === 19760418) return "XAU control";
-        if (symbol.includes("XAU") && magic === 19760428) return "XAU treatment";
-        if (symbol.includes("BTC") && magic === 19760419) return "BTC control";
+        if (symbol.includes("XAU") && magic === 19760418) return "黄金主策略";
+        if (symbol.includes("XAU") && magic === 19760428) return "黄金试验策略";
+        if (symbol.includes("BTC") && magic === 19760419) return "比特币主策略";
         return symbol ? `${symbol} ${magic}` : "—";
       },
 
@@ -1112,10 +1112,21 @@
         const map = { bullish: "看多 ↑", bearish: "看空 ↓", neutral: "中性 ·" };
         return map[direction] || "?";
       },
+      regimeLabel(regime) {
+        const map = {
+          TRENDING: "趋势行情",
+          TREND_UP: "上涨趋势",
+          TREND_DOWN: "下跌趋势",
+          CONSOLIDATION: "震荡整理",
+          TRANSITION: "方向切换",
+          ATH_BREAKOUT: "历史高位突破",
+        };
+        return map[regime] || regime || "未知环境";
+      },
       get regimeHeader() {
         if (!this.regimeEvents.length) return "";
         const top = this.regimeEvents[0];
-        return `source: ${top.source || "?"} · ${this.formatTime(top.ts)}`;
+        return `来源: ${top.source || "未知"} · ${this.formatTime(top.ts)}`;
       },
 
       // Round 5 O2: per-leg P&L card helpers.
@@ -1124,9 +1135,9 @@
       get pnlLegRows() {
         const legs = this.pnl?.legs || {};
         const keys = [
-          { key: "control_xau",   label: "XAUUSD Control" },
-          { key: "treatment_xau", label: "XAUUSD Treatment" },
-          { key: "control_btc",   label: "BTCUSD Control" },
+          { key: "control_xau",   label: "黄金主策略" },
+          { key: "treatment_xau", label: "黄金试验策略" },
+          { key: "control_btc",   label: "比特币主策略" },
         ];
         return keys.map(k => {
           const l = legs[k.key] || { realized: 0, floating: 0, trades: 0 };
@@ -1153,7 +1164,7 @@
       },
       get pnlLegSource() {
         if (!this.pnl) return "尚未加载";
-        const src = this.pnl.source === "mt5_live" ? "MT5 实时" : "MT5 不可用 (仅浮动缓存)";
+        const src = this.pnl.source === "mt5_live" ? "MT5 实时" : "MT5 暂不可用（仅显示缓存浮盈）";
         const n = this.pnl.total?.trades || 0;
         return `${src} · 今日 ${n} 笔已平仓`;
       },
@@ -1223,7 +1234,7 @@
         const conf = this.ai?.ai_confidence ?? this.state?.ai_confidence ?? null;
         const colorMap = { bullish: "#10B981", bearish: "#EF4444", neutral: "#94A3B8" };
         return {
-          label: AI_DIR_LABEL[dir] || "N/A",
+          label: AI_DIR_LABEL[dir] || "暂无",
           color: colorMap[dir] || "#94A3B8",
           sub: conf == null ? "" : "置信度 " + Math.round(conf * 100) + "%",
         };

@@ -49,3 +49,5 @@ htmlcov/
 Thumbs.db
 DAT_MT_XAUUSD_M1_2023.zip
 uv.lock
+
+.superpowers/

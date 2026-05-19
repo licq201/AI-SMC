@@ -1,121 +1,61 @@
 {
   "cycle": 1,
-  "timestamp": "2026-05-18T15:30:42.026380+00:00",
-  "price": 4534.76,
+  "timestamp": "2026-05-19T00:31:11.134483+00:00",
+  "runtime_status": "waiting_next_m15",
+  "symbol": "XAUUSD",
+  "price": null,
   "action": "HOLD",
-  "reason": "AI BEARISH (50%) but no SMC setups found",
-  "regime": "trending",
-  "ai_direction": "bearish",
-  "ai_confidence": 0.5,
+  "reason": "\u7b49\u5f85\u4e0b\u4e00\u6839 M15 K \u7ebf\u6536\u76d8\u540e\u8ba1\u7b97\u4ea4\u6613\u4fe1\u53f7",
+  "regime": "waiting",
+  "ai_direction": "waiting",
+  "ai_confidence": 0.0,
   "setups_count": 0,
-  "volatility": "HIGH",
-  "trading_mode": "trending",
+  "volatility": "waiting",
+  "trading_mode": "waiting",
   "blocked_reason": null,
   "range_bounds": null,
-  "range_diagnostic": {
-    "detect": {
-      "h1_bars_count": 500,
-      "donchian_lookback_required": 48,
-      "n_bearish_ob": 2,
-      "n_bullish_ob": 0,
-      "n_swing_high": 14,
-      "n_swing_low": 13,
-      "donchian_width_pts": 22041.0,
-      "min_range_width_required": 200.0,
-      "max_range_width_required": 20000.0,
-      "method_a_hit": false,
-      "method_b_hit": false,
-      "method_d_hit": false,
-      "final_source": null,
-      "ai_regime_label": "TREND_DOWN",
-      "ai_regime_confidence": 0.8,
-      "range_invalidated_by_regime": null
-    },
-    "guards": {},
-    "setups": {}
-  },
+  "range_diagnostic": {},
   "smc_diagnostic": {
-    "htf_bias_direction": "bearish",
-    "htf_bias_confidence": 0.45,
-    "htf_bias_rationale": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2272%/bar (bearish).",
-    "stage_reject": "all_entries_failed (zones=3, min_conf=0.45)",
+    "stage_reject": null,
     "final_count": 0,
-    "ai_regime_stage": "deterministic_prefilter",
-    "h1_zones_count": 3,
-    "zone_rejects": {
-      "cooldown": 0,
-      "active_zones": 0,
-      "intra_call_dedup": 0,
-      "entry_none": 3,
-      "trigger_filter": 0,
-      "confluence_low": 0
-    },
-    "zone_details": [
-      {
-        "high": 4833.01,
-        "low": 4820.94,
-        "direction": "short",
-        "dist_from_price": 286.18,
-        "in_expanded_zone": false
-      },
-      {
-        "high": 4718.84,
-        "low": 4691.08,
-        "direction": "short",
-        "dist_from_price": 156.32,
-        "in_expanded_zone": false
-      },
-      {
-        "high": 4816.92,
-        "low": 4810.6,
-        "direction": "short",
-        "dist_from_price": 275.84,
-        "in_expanded_zone": false
-      }
-    ],
-    "current_price": 4534.76,
-    "min_confluence": 0.45
+    "runtime_status": "waiting_next_m15"
   },
   "position_size": 0.0,
-  "htf_bias_conf": 0.7,
-  "htf_bias_tier": "tier_1",
+  "htf_bias_conf": 0.0,
+  "htf_bias_tier": "neutral",
+  "next_bar_close": "2026-05-19T00:45:00+00:00",
+  "ai_enabled": true,
+  "ai_regime_enabled": true,
   "smc_trace": {
-    "current_stage": "m15_entry",
+    "current_stage": "decision",
     "stages": [
       {
         "name": "htf_bias",
         "label": "HTF \u65b9\u5411",
-        "status": "passed",
-        "direction": "bearish",
-        "confidence": 0.45,
-        "explanation": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2272%/bar (bearish)."
+        "status": "pending",
+        "direction": null,
+        "confidence": null,
+        "explanation": "\u7b49\u5f85 D1/H4 \u7ed3\u6784\u65b9\u5411\u786e\u8ba4\u3002"
       },
       {
         "name": "h1_zone",
         "label": "H1 \u4ea4\u6613\u533a",
-        "status": "passed",
-        "count": 3,
-        "explanation": "\u627e\u5230 3 \u4e2a H1 \u5019\u9009\u4ea4\u6613\u533a\u3002"
+        "status": "pending",
+        "count": null,
+        "explanation": "\u5c1a\u672a\u8fdb\u5165 H1 zone \u9636\u6bb5\u3002"
       },
       {
         "name": "m15_entry",
         "label": "M15 \u5165\u573a",
-        "status": "blocked",
-        "zone_rejects": {
-          "cooldown": 0,
-          "active_zones": 0,
-          "intra_call_dedup": 0,
-          "entry_none": 3,
-          "trigger_filter": 0,
-          "confluence_low": 0
-        },
-        "explanation": "M15 \u5c1a\u672a\u901a\u8fc7\u5165\u573a\u786e\u8ba4\uff1a\u65e0\u89e6\u53d1 3\uff0c\u5171\u632f\u4e0d\u8db3 0\uff0c\u89e6\u53d1\u5668\u4e0d\u5339\u914d 0\u3002"
+        "status": "pending",
+        "zone_rejects": {},
+        "explanation": "\u7b49\u5f85\u4ef7\u683c\u8fdb\u5165 zone \u5e76\u5f62\u6210 M15 CHoCH/BOS/FVG \u5165\u573a\u89e6\u53d1\u3002"
       },
       {
         "name": "regime_filter",
         "label": "\u73af\u5883\u8fc7\u6ee4",
         "status": "passed",
-        "source": "deterministic_prefilter",
+        "source": null,
         "explanation": "Regime \u9636\u6bb5\uff1adeterministic_prefilter\u3002"
       },
       {
@@ -127,35 +67,14 @@
     ],
     "decision": {
       "action": "HOLD",
-      "reason": "AI BEARISH (50%) but no SMC setups found",
+      "reason": "\u7b49\u5f85\u4e0b\u4e00\u6839 M15 K \u7ebf\u6536\u76d8\u540e\u8ba1\u7b97\u4ea4\u6613\u4fe1\u53f7",
       "setup_count": 0
     },
     "ai": {
-      "source": "ai_debate",
-      "direction": "bearish",
-      "confidence": 0.5
+      "source": "waiting",
+      "direction": "waiting",
+      "confidence": null
     },
-    "range": {
-      "detect": {
-        "h1_bars_count": 500,
-        "donchian_lookback_required": 48,
-        "n_bearish_ob": 2,
-        "n_bullish_ob": 0,
-        "n_swing_high": 14,
-        "n_swing_low": 13,
-        "donchian_width_pts": 22041.0,
-        "min_range_width_required": 200.0,
-        "max_range_width_required": 20000.0,
-        "method_a_hit": false,
-        "method_b_hit": false,
-        "method_d_hit": false,
-        "final_source": null,
-        "ai_regime_label": "TREND_DOWN",
-        "ai_regime_confidence": 0.8,
-        "range_invalidated_by_regime": null
-      },
-      "guards": {},
-      "setups": {}
-    }
+    "range": {}
   }
 }

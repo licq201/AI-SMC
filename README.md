@@ -2,6 +2,12 @@
 
 An end-to-end algorithmic trading system for XAUUSD (Gold) on MetaTrader 5. Combines classical Smart Money Concepts (SMC) pattern detection with an AI regime classifier backed by a 7-agent Claude debate pipeline. Validated through 10 sprints of walk-forward out-of-sample backtesting, with paper trading live on a Windows VPS.
 
+## 中文用户入口
+
+- 日常使用请先看：[AI-SMC 用户操作手册](docs/用户操作手册.md)
+- Web 盯盘台说明：[AI-SMC Dashboard 使用指南](docs/dashboard_guide.md)
+- 技术复盘与模块说明：[开发手册](开发手册.md)
+
 ---
 
 ## Architecture
