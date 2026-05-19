@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI-SMC · SMC 图表</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0F172A; color: #F1F5F9;
+    font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #chart-wrap { position: relative; width: 100%; height: calc(100vh - 52px); }
+  #lw-chart   { width: 100%; height: 100%; }
+  #overlay    {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 10;
+  }
+  #legend {
+    position: absolute; top: 8px; left: 8px; z-index: 20;
+    pointer-events: none;
+  }
+  .tf-btn {
+    background: transparent; color: #94A3B8;
+    border: 1px solid rgba(148,163,184,0.25);
+    border-radius: 5px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .tf-btn.active { background: #3B82F6; color: #fff; border-color: #3B82F6; }
+  .tog-label {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 12px; cursor: pointer; user-select: none;
+  }
+  input[type=checkbox] { accent-color: currentColor; }
+</style>
+</head>
+<body>
+
+<!-- ── Toolbar ──────────────────────────────────────────────────────────── -->
+<nav style="height:52px;background:#1E293B;border-bottom:1px solid rgba(148,163,184,0.12);
+            display:flex;align-items:center;gap:10px;padding:0 14px;flex-shrink:0;">
+
+  <a href="/" style="font-size:12px;color:#94A3B8;text-decoration:none;white-space:nowrap;">← 监控</a>
+  <span style="font-size:15px;font-weight:600;white-space:nowrap;">SMC 图表</span>
+
+  <!-- Symbol -->
+  <select id="sel-sym"
+    style="background:#0F172A;color:#F1F5F9;border:1px solid rgba(148,163,184,0.2);
+           border-radius:6px;padding:3px 8px;font-size:12px;">
+    <option value="XAUUSD">XAUUSD</option>
+    <option value="BTCUSD">BTCUSD</option>
+  </select>
+
+  <!-- Timeframes -->
+  <div style="display:flex;gap:4px;">
+    <button class="tf-btn" data-tf="M15">M15</button>
+    <button class="tf-btn active" data-tf="H1">H1</button>
+    <button class="tf-btn" data-tf="H4">H4</button>
+    <button class="tf-btn" data-tf="D1">D1</button>
+  </div>
+
+  <!-- Signal toggles -->
+  <label class="tog-label">
+    <input type="checkbox" id="tog-ob"     checked style="accent-color:#10B981;">
+    <span style="color:#10B981;">OB</span>
+  </label>
+  <label class="tog-label">
+    <input type="checkbox" id="tog-fvg"    checked style="accent-color:#06B6D4;">
+    <span style="color:#06B6D4;">FVG</span>
+  </label>
+  <label class="tog-label">
+    <input type="checkbox" id="tog-struct" checked style="accent-color:#818CF8;">
+    <span style="color:#818CF8;">BOS/CHoCH</span>
+  </label>
+  <label class="tog-label">
+    <input type="checkbox" id="tog-liq"    checked style="accent-color:#F59E0B;">
+    <span style="color:#F59E0B;">EQH/EQL</span>
+  </label>
+
+  <div style="flex:1;"></div>
+
+  <span id="status" style="font-size:11px;color:#64748B;white-space:nowrap;"></span>
+  <button onclick="loadData()"
+    style="background:#3B82F6;color:#fff;border:none;border-radius:6px;
+           padding:5px 14px;font-size:13px;cursor:pointer;">
+    刷新
+  </button>
+</nav>
+
+<!-- ── Chart area ───────────────────────────────────────────────────────── -->
+<div id="chart-wrap">
+  <div id="lw-chart"></div>
+  <canvas id="overlay"></canvas>
+  <div id="legend"></div>
+</div>
+
+<script>
+'use strict';
+
+// ─── App state ────────────────────────────────────────────────────────────
+const S = {
+  symbol:    'XAUUSD',
+  tf:        'H1',
+  data:      null,
+  chart:     null,
+  series:    null,
+};
+
+// ─── Limits per timeframe ─────────────────────────────────────────────────
+const TF_LIMITS = { M15: 500, H1: 400, H4: 300, D1: 250 };
+
+// ─── Colors ───────────────────────────────────────────────────────────────
+const C = {
+  obBull:    { fill: 'rgba(16,185,129,0.13)',  stroke: '#10B981' },
+  obBear:    { fill: 'rgba(239,68,68,0.13)',   stroke: '#EF4444' },
+  fvgBull:   { fill: 'rgba(6,182,212,0.13)',   stroke: '#06B6D4' },
+  fvgBear:   { fill: 'rgba(251,146,60,0.13)',  stroke: '#FB923C' },
+  bos:       '#60A5FA',
+  choch:     '#818CF8',
+  liq:       '#F59E0B',
+  swingText: '#F59E0B',
+};
+
+// ─── Chart init ───────────────────────────────────────────────────────────
+const chartEl   = document.getElementById('lw-chart');
+const overlayEl = document.getElementById('overlay');
+const wrapEl    = document.getElementById('chart-wrap');
+
+const chart = LightweightCharts.createChart(chartEl, {
+  width:  wrapEl.clientWidth,
+  height: wrapEl.clientHeight,
+  layout: {
+    background: { type: 'solid', color: '#0F172A' },
+    textColor:  '#94A3B8',
+  },
+  grid: {
+    vertLines: { color: 'rgba(148,163,184,0.07)' },
+    horzLines: { color: 'rgba(148,163,184,0.07)' },
+  },
+  crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)' },
+  timeScale: {
+    borderColor:    'rgba(148,163,184,0.2)',
+    timeVisible:    true,
+    secondsVisible: false,
+  },
+});
+S.chart = chart;
+
+const series = chart.addCandlestickSeries({
+  upColor:        '#10B981', downColor:        '#EF4444',
+  borderUpColor:  '#10B981', borderDownColor:  '#EF4444',
+  wickUpColor:    '#10B981', wickDownColor:    '#EF4444',
+});
+S.series = series;
+
+// ─── Resize ───────────────────────────────────────────────────────────────
+new ResizeObserver(() => {
+  chart.resize(wrapEl.clientWidth, wrapEl.clientHeight);
+  redraw();
+}).observe(wrapEl);
+
+chart.timeScale().subscribeVisibleTimeRangeChange(redraw);
+
+// ─── Toolbar wiring ───────────────────────────────────────────────────────
+document.getElementById('sel-sym').addEventListener('change', e => {
+  S.symbol = e.target.value;
+  loadData();
+});
+
+document.querySelectorAll('.tf-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.tf = btn.dataset.tf;
+    loadData();
+  });
+});
+
+['tog-ob', 'tog-fvg', 'tog-struct', 'tog-liq'].forEach(id => {
+  document.getElementById(id).addEventListener('change', redraw);
+});
+
+// ─── Data loading ─────────────────────────────────────────────────────────
+async function loadData() {
+  setStatus('加载中…', '#64748B');
+  try {
+    const limit = TF_LIMITS[S.tf] || 300;
+    const url   = `/api/smc?symbol=${S.symbol}&tf=${S.tf}&limit=${limit}`;
+    const resp  = await fetch(url);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      setStatus(`错误: ${err.detail || resp.statusText}`, '#EF4444');
+      return;
+    }
+    S.data = await resp.json();
+    renderCandles();
+    redraw();
+    updateLegend();
+    setStatus(`更新于 ${new Date().toLocaleTimeString('zh-CN')}`, '#94A3B8');
+  } catch (e) {
+    setStatus(`连接失败: ${e.message}`, '#EF4444');
+  }
+}
+
+function setStatus(msg, color) {
+  const el = document.getElementById('status');
+  el.textContent  = msg;
+  el.style.color  = color;
+}
+
+// ─── Render candles + swing markers ──────────────────────────────────────
+function renderCandles() {
+  if (!S.data) return;
+  series.setData(S.data.candles);
+
+  const markers = (S.data.swing_points || []).map(sp => ({
+    time:     sp.ts,
+    position: sp.swing_type === 'high' ? 'aboveBar' : 'belowBar',
+    color:    C.swingText,
+    shape:    sp.swing_type === 'high' ? 'arrowDown' : 'arrowUp',
+    text:     sp.swing_type === 'high' ? 'SH' : 'SL',
+    size:     1,
+  }));
+  series.setMarkers(markers);
+  chart.timeScale().fitContent();
+}
+
+// ─── Canvas overlay ───────────────────────────────────────────────────────
+function redraw() {
+  if (!S.data) return;
+
+  overlayEl.width  = wrapEl.clientWidth;
+  overlayEl.height = wrapEl.clientHeight;
+  const ctx = overlayEl.getContext('2d');
+  ctx.clearRect(0, 0, overlayEl.width, overlayEl.height);
+
+  const showOB     = document.getElementById('tog-ob').checked;
+  const showFVG    = document.getElementById('tog-fvg').checked;
+  const showStruct = document.getElementById('tog-struct').checked;
+  const showLiq    = document.getElementById('tog-liq').checked;
+
+  const tx = t  => chart.timeScale().timeToCoordinate(t);
+  const py = p  => series.priceToCoordinate(p);
+  const RIGHT = wrapEl.clientWidth - 68;
+
+  const candles = S.data.candles || [];
+  const lastT   = candles.length ? candles[candles.length - 1].time : null;
+
+  ctx.textBaseline = 'top';
+
+  // ── Order Blocks ─────────────────────────────────────────────────
+  if (showOB) {
+    for (const ob of (S.data.order_blocks || [])) {
+      if (ob.mitigated) continue;
+      const x1 = tx(ob.ts_start);
+      const x2 = lastT ? RIGHT : tx(ob.ts_end);
+      const y1 = py(ob.high);
+      const y2 = py(ob.low);
+      if (x1 == null || y1 == null || y2 == null) continue;
+
+      const col    = ob.ob_type === 'bullish' ? C.obBull : C.obBear;
+      const xL     = Math.min(x1, x2 ?? RIGHT);
+      const w      = Math.max(2, (x2 ?? RIGHT) - xL);
+      const yT     = Math.min(y1, y2);
+      const h      = Math.max(2, Math.abs(y1 - y2));
+
+      ctx.fillStyle   = col.fill;
+      ctx.fillRect(xL, yT, w, h);
+      ctx.strokeStyle = col.stroke;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([]);
+      ctx.strokeRect(xL, yT, w, h);
+
+      ctx.fillStyle = col.stroke;
+      ctx.font      = '10px ui-monospace, monospace';
+      ctx.fillText(ob.ob_type === 'bullish' ? 'OB ▲' : 'OB ▼', xL + 3, yT + 3);
+    }
+  }
+
+  // ── FVGs ─────────────────────────────────────────────────────────
+  if (showFVG) {
+    for (const fvg of (S.data.fvgs || [])) {
+      if (fvg.fully_filled) continue;
+      const x1 = tx(fvg.ts);
+      const y1 = py(fvg.high);
+      const y2 = py(fvg.low);
+      if (x1 == null || y1 == null || y2 == null) continue;
+
+      const col = fvg.fvg_type === 'bullish' ? C.fvgBull : C.fvgBear;
+      const yT  = Math.min(y1, y2);
+      const h   = Math.max(2, Math.abs(y1 - y2));
+      const w   = Math.max(2, RIGHT - x1);
+
+      ctx.fillStyle   = col.fill;
+      ctx.fillRect(x1, yT, w, h);
+      ctx.strokeStyle = col.stroke;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x1, yT, w, h);
+      ctx.setLineDash([]);
+
+      const pct = Math.round(fvg.filled_pct * 100);
+      ctx.fillStyle = col.stroke;
+      ctx.font      = '10px ui-monospace, monospace';
+      ctx.fillText(`FVG ${pct}%`, x1 + 3, yT + 3);
+    }
+  }
+
+  // ── BOS / CHoCH ──────────────────────────────────────────────────
+  if (showStruct) {
+    for (const sb of (S.data.structure_breaks || [])) {
+      const x = tx(sb.ts);
+      const y = py(sb.price);
+      if (x == null || y == null) continue;
+
+      const isChoch = sb.break_type === 'choch';
+      const color   = isChoch ? C.choch : C.bos;
+      const arrow   = sb.direction === 'bullish' ? '↑' : '↓';
+      const label   = `${sb.break_type.toUpperCase()} ${arrow}`;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = isChoch ? 1.5 : 1;
+      ctx.setLineDash(isChoch ? [] : [6, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(RIGHT, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = color;
+      ctx.font      = `${isChoch ? 'bold ' : ''}10px ui-monospace, monospace`;
+      const lw = ctx.measureText(label).width;
+      ctx.fillText(label, RIGHT - lw - 4, y - 12);
+    }
+  }
+
+  // ── EQH / EQL ────────────────────────────────────────────────────
+  if (showLiq) {
+    for (const lv of (S.data.liquidity_levels || [])) {
+      if (lv.swept) continue;
+      const y = py(lv.price);
+      if (y == null) continue;
+
+      const isHigh = lv.level_type === 'equal_highs';
+      ctx.strokeStyle = C.liq;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([2, 5]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(RIGHT, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const label = `${isHigh ? 'EQH' : 'EQL'} ×${lv.touches}`;
+      ctx.fillStyle = C.liq;
+      ctx.font      = '10px ui-monospace, monospace';
+      ctx.fillText(label, 4, y - 12);
+    }
+  }
+}
+
+// ─── Legend counts ────────────────────────────────────────────────────────
+function updateLegend() {
+  if (!S.data) return;
+  const d = S.data;
+  const activeOB    = (d.order_blocks     || []).filter(x => !x.mitigated).length;
+  const activeFVG   = (d.fvgs             || []).filter(x => !x.fully_filled).length;
+  const bosCount    = (d.structure_breaks || []).filter(x => x.break_type === 'bos').length;
+  const chochCount  = (d.structure_breaks || []).filter(x => x.break_type === 'choch').length;
+  const liqCount    = (d.liquidity_levels || []).filter(x => !x.swept).length;
+  const swingCount  = (d.swing_points     || []).length;
+
+  document.getElementById('legend').innerHTML = `
+    <div style="
+      display:flex;gap:10px;font-size:11px;font-family:ui-monospace,monospace;
+      background:rgba(15,23,42,0.75);padding:5px 10px;
+      border-radius:5px;border:1px solid rgba(148,163,184,0.1);backdrop-filter:blur(4px);">
+      <span style="color:#10B981;">OB ${activeOB}</span>
+      <span style="color:#06B6D4;">FVG ${activeFVG}</span>
+      <span style="color:#60A5FA;">BOS ${bosCount}</span>
+      <span style="color:#818CF8;">CHoCH ${chochCount}</span>
+      <span style="color:#F59E0B;">LIQ ${liqCount}</span>
+      <span style="color:#F59E0B;">SW ${swingCount}</span>
+    </div>`;
+}
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────
+loadData();
+</script>
+
+</body>
+</html>

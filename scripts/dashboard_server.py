@@ -458,5 +458,14 @@ def index() -> FileResponse:
     return FileResponse(DASHBOARD_HTML, media_type="text/html")
 
 
+@app.get("/chart")
+def chart_page() -> FileResponse:
+    """Serve the standalone SMC chart page."""
+    path = ROOT / "dashboard" / "chart.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="dashboard/chart.html not found")
+    return FileResponse(path, media_type="text/html")
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
