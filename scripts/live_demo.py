@@ -1014,18 +1014,38 @@ def main():
                 tick = mt5.symbol_info_tick(cfg.mt5_path)
                 if tick is not None:
                     waiting_price = float(tick.bid)
-                atomic_write_json(
-                    STATE_PATH,
-                    build_waiting_state(
-                        cycle=cycle,
-                        now=now,
-                        next_bar_close=nxt,
-                        symbol=SYMBOL,
-                        ai_enabled=_ai_runtime_enabled,
-                        ai_regime_enabled=_ai_regime_runtime_enabled,
-                        current_price=waiting_price,
-                    ),
-                )
+                    
+                # Preserve existing state (like smc_trace and smc_orderflow) instead of wiping
+                import json
+                existing_state = {}
+                if STATE_PATH.exists():
+                    try:
+                        with open(STATE_PATH, "r", encoding="utf-8") as f:
+                            existing_state = json.load(f)
+                    except Exception:
+                        pass
+                        
+                if existing_state:
+                    existing_state["runtime_status"] = "waiting_next_m15"
+                    existing_state["next_bar_close"] = nxt.isoformat()
+                    existing_state["timestamp"] = now.isoformat()
+                    existing_state["cycle"] = cycle
+                    if waiting_price is not None:
+                        existing_state["price"] = waiting_price
+                    atomic_write_json(STATE_PATH, existing_state)
+                else:
+                    atomic_write_json(
+                        STATE_PATH,
+                        build_waiting_state(
+                            cycle=cycle,
+                            now=now,
+                            next_bar_close=nxt,
+                            symbol=SYMBOL,
+                            ai_enabled=_ai_runtime_enabled,
+                            ai_regime_enabled=_ai_regime_runtime_enabled,
+                            current_price=waiting_price,
+                        ),
+                    )
             except Exception as _waiting_state_exc:
                 log_warn("waiting_state_write_failed", exc=str(_waiting_state_exc)[:120])
             while wait > 0 and running:

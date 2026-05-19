@@ -286,7 +286,7 @@ def build_smc_orderflow(
             "entry",
             "入场",
             entry_status,
-            "M15 入场确认" if entry_status == "passed" else "等待 M15 入场",
+            "M15 入场确认 (BOS/CHoCH/FVG)" if entry_status == "passed" else "等待 M15 触发 (BOS/CHoCH/FVG)",
             f"无触发 {entry_none}，共振不足 {confluence_low}，触发器不匹配 {trigger_filter}。",
         ),
         _status_item(
@@ -320,7 +320,7 @@ def build_smc_orderflow(
             "timeframe": "M15",
             "label": "入场触发",
             "status": entry_status,
-            "explanation": "已形成入场触发。" if entry_status == "passed" else "价格尚未在交易区内形成 M15 反转或延续确认。",
+            "explanation": "已形成入场触发 (BOS/CHoCH/FVG)。" if entry_status == "passed" else "价格尚未在交易区内形成 M15 的 BOS、CHoCH 或 FVG 确认。",
         },
     ]
 

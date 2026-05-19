@@ -63,4 +63,12 @@ def build_waiting_state(
             "ai_confidence": 0.0,
         },
     )
+    from smc.strategy.smc_orderflow import build_smc_orderflow
+    state["smc_orderflow"] = build_smc_orderflow(
+        smc_trace=state.get("smc_trace"),
+        smc_diagnostic=state.get("smc_diagnostic"),
+        range_diagnostic=state.get("range_diagnostic"),
+        best_setup=None,
+        current_price=current_price,
+    )
     return state
