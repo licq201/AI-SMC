@@ -225,6 +225,7 @@ function renderCandles() {
     text:     sp.swing_type === 'high' ? 'SH' : 'SL',
     size:     1,
   }));
+  markers.sort((a, b) => a.time - b.time);
   series.setMarkers(markers);
   chart.timeScale().fitContent();
 }
@@ -257,14 +258,15 @@ function redraw() {
     for (const ob of (S.data.order_blocks || [])) {
       if (ob.mitigated) continue;
       const x1 = tx(ob.ts_start);
-      const x2 = lastT ? RIGHT : tx(ob.ts_end);
+      const x2raw = tx(ob.ts_end);
+      const x2 = lastT ? RIGHT : (x2raw ?? RIGHT);
       const y1 = py(ob.high);
       const y2 = py(ob.low);
       if (x1 == null || y1 == null || y2 == null) continue;
 
       const col    = ob.ob_type === 'bullish' ? C.obBull : C.obBear;
-      const xL     = Math.min(x1, x2 ?? RIGHT);
-      const w      = Math.max(2, (x2 ?? RIGHT) - xL);
+      const xL     = Math.min(x1, x2);
+      const w      = Math.max(2, x2 - xL);
       const yT     = Math.min(y1, y2);
       const h      = Math.max(2, Math.abs(y1 - y2));
 
