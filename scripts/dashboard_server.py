@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -333,6 +333,119 @@ async def toggle_trading(
     else:
         flag.unlink(missing_ok=True)
     return JSONResponse({"paused": paused})
+
+
+# ---------------------------------------------------------------------------
+# Chart data — /api/candles and /api/smc
+# ---------------------------------------------------------------------------
+
+def _fetch_bars(symbol: str, tf_str: str, limit: int) -> "pl.DataFrame":
+    """Fetch recent OHLCV bars from a live MT5 terminal.
+
+    Raises
+    ------
+    HTTPException(400)  Unknown timeframe string.
+    HTTPException(503)  MT5 mock mode, missing credentials, or connection failure.
+    """
+    import polars as pl
+    from smc.config import SMCConfig
+    from smc.monitor.chart_feeds import TF_MAP, tf_bar_duration
+
+    cfg = SMCConfig()
+
+    if cfg.mt5_mock:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "MT5 not connected: SMC_MT5_MOCK=1. "
+                "Set SMC_MT5_MOCK=0 on Windows VPS with MT5 running."
+            ),
+        )
+    if not cfg.has_mt5_credentials():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "MT5 credentials not configured. "
+                "Set SMC_MT5_LOGIN, SMC_MT5_PASSWORD, SMC_MT5_SERVER in .env"
+            ),
+        )
+    if tf_str not in TF_MAP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown timeframe {tf_str!r}. Valid: {sorted(TF_MAP)}",
+        )
+
+    from smc.data.adapters.mt5_adapter import MT5Adapter
+
+    tf_enum   = TF_MAP[tf_str]
+    duration  = tf_bar_duration[tf_str]
+    end       = datetime.now(timezone.utc)
+    start     = end - duration * (limit + 60)
+
+    try:
+        with MT5Adapter(
+            login=cfg.mt5_login,
+            password=cfg.mt5_password.get_secret_value(),
+            server=cfg.mt5_server,
+            path=cfg.mt5_path or None,
+            instrument=symbol,
+        ) as adapter:
+            df = adapter.fetch(instrument=symbol, timeframe=tf_enum, start=start, end=end)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"MT5 fetch failed: {exc}") from exc
+
+    if len(df) == 0:
+        raise HTTPException(status_code=503, detail="MT5 returned empty data.")
+
+    return df.tail(limit)
+
+
+@app.get("/api/candles")
+def get_candles(
+    symbol: str = Query(default="XAUUSD"),
+    tf:     str = Query(default="H1"),
+    limit:  int = Query(default=200, ge=10, le=1000),
+) -> JSONResponse:
+    """Return recent OHLCV bars as Lightweight-Charts-compatible JSON."""
+    df = _fetch_bars(symbol, tf, limit)
+    candles = []
+    for row in df.iter_rows(named=True):
+        ts = row["ts"]
+        t  = int(ts.timestamp()) if isinstance(ts, datetime) else int(ts)
+        candles.append({
+            "time":  t,
+            "open":  round(float(row["open"]),  5),
+            "high":  round(float(row["high"]),  5),
+            "low":   round(float(row["low"]),   5),
+            "close": round(float(row["close"]), 5),
+        })
+    return JSONResponse({"symbol": symbol, "timeframe": tf, "candles": candles})
+
+
+@app.get("/api/smc")
+def get_smc(
+    symbol: str = Query(default="XAUUSD"),
+    tf:     str = Query(default="H1"),
+    limit:  int = Query(default=300, ge=50, le=2000),
+) -> JSONResponse:
+    """Return OHLCV bars + all SMC signals for chart.html."""
+    from smc.monitor.chart_feeds import TF_MAP, serialize_smc, swing_length_for
+    from smc.smc_core.detector import SMCDetector
+
+    df      = _fetch_bars(symbol, tf, limit)
+    tf_enum = TF_MAP[tf]
+
+    try:
+        detector = SMCDetector(swing_length=swing_length_for(tf))
+        snapshot = detector.detect(df, tf_enum)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"SMC detection failed: {exc}") from exc
+
+    payload = serialize_smc(snapshot, df)
+    payload["symbol"]       = symbol
+    payload["timeframe"]    = tf
+    payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+    return JSONResponse(payload)
 
 
 @app.get("/")
