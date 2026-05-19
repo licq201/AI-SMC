@@ -1,22 +1,22 @@
 {
   "source": "technical + ai_debate",
-  "assessed_at": "2026-05-19T04:00:00.060927+00:00",
-  "sma20": 4640.74,
-  "sma50": 4705.51,
+  "assessed_at": "2026-05-19T04:30:00.052093+00:00",
+  "sma20": 4640.38,
+  "sma50": 4705.37,
   "direction": "bearish",
   "confidence": 0.7,
-  "reasoning": "Price $4547 vs SMA20 $4641 vs SMA50 $4706",
-  "ai_elapsed_ms": 56797,
+  "reasoning": "Price $4540 vs SMA20 $4640 vs SMA50 $4705",
+  "ai_elapsed_ms": 41969,
   "ai_direction": "bearish",
   "ai_confidence": 0.5,
-  "ai_reasoning": "Both analysts agree bearish (macro 0.45, news 0.50), average 0.475 + 0.10 agreement bonus = 0.575. H4 technical context confirms direction: SMA50 down matches bearish, and lower_lows (2) > higher_highs (0) satisfies bearish confirmation criteria, adding +0.10 bonus to reach 0.675, rounded to 0.65. A",
+  "ai_reasoning": "Both analysts agree bearish at 0.45 confidence, yielding base 0.55 (average + 0.1 agreement bonus). H4 technical context confirms direction: SMA50 direction=down matches bearish call, and lower_lows (2) exceed higher_highs (0), satisfying both confirmation criteria. This adds +0.1 confirmation bonus",
   "ai_source": "ai_debate",
   "ai_key_drivers": [
-    "SMA50 sloping down at -0.0522%",
-    "2 lower lows vs 0 higher highs on H4",
-    "macro analyst bearish at 0.45 confidence",
-    "news analyst bearish at 0.50 confidence"
+    "SMA50 sloping down at -0.0528% over 500 H4 bars",
+    "2 confirmed lower lows with zero higher highs",
+    "Dual analyst agreement on bearish structure",
+    "No macro catalyst contradicting technical bias"
   ],
-  "atr_pct": 2.2,
+  "atr_pct": 2.21,
   "volatility": "HIGH"
 }

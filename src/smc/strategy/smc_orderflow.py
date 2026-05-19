@@ -322,6 +322,18 @@ def build_smc_orderflow(
             "status": entry_status,
             "explanation": "已形成入场触发 (BOS/CHoCH/FVG)。" if entry_status == "passed" else "价格尚未在交易区内形成 M15 的 BOS、CHoCH 或 FVG 确认。",
         },
+        {
+            "timeframe": "Regime",
+            "label": "环境过滤",
+            "status": "passed",
+            "explanation": f"Regime 阶段：{smc.get('ai_regime_stage', 'deterministic_prefilter')}。",
+        },
+        {
+            "timeframe": "AI",
+            "label": "AI 复核",
+            "status": "passed" if smc.get("ai_regime_stage") == "candidate_review" else "skipped",
+            "explanation": "有候选交易时才进行 AI regime 复核；无候选时跳过以避免无效算力消耗。",
+        },
     ]
 
     return {
