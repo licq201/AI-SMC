@@ -408,17 +408,20 @@ def get_candles(
 ) -> JSONResponse:
     """Return recent OHLCV bars as Lightweight-Charts-compatible JSON."""
     df = _fetch_bars(symbol, tf, limit)
-    candles = []
-    for row in df.iter_rows(named=True):
-        ts = row["ts"]
-        t  = int(ts.timestamp()) if isinstance(ts, datetime) else int(ts)
-        candles.append({
-            "time":  t,
-            "open":  round(float(row["open"]),  5),
-            "high":  round(float(row["high"]),  5),
-            "low":   round(float(row["low"]),   5),
-            "close": round(float(row["close"]), 5),
-        })
+    try:
+        candles = []
+        for row in df.iter_rows(named=True):
+            ts = row["ts"]
+            t  = int(ts.timestamp()) if isinstance(ts, datetime) else int(ts)
+            candles.append({
+                "time":  t,
+                "open":  round(float(row["open"]),  5),
+                "high":  round(float(row["high"]),  5),
+                "low":   round(float(row["low"]),   5),
+                "close": round(float(row["close"]), 5),
+            })
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Candle serialization failed: {exc}") from exc
     return JSONResponse({"symbol": symbol, "timeframe": tf, "candles": candles})
 
 
