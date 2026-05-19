@@ -145,6 +145,7 @@ from smc.strategy.range_trader import (
 from smc.strategy.range_quota import AsianRangeQuota
 from smc.strategy.phase1a_circuit_breaker import Phase1aCircuitBreaker
 from smc.strategy.htf_bias import compute_htf_bias, htf_bias_tier
+from smc.strategy.smc_orderflow import build_smc_orderflow
 from smc.strategy.smc_trace import build_smc_trace
 from smc.monitor.timing import next_bar_close
 from smc.monitor.structured_log import crit as log_crit, warn as log_warn, info as log_info
@@ -737,6 +738,13 @@ def save_state(cycle, price, action, reason, ai_analysis, regime, setups,
         action=action,
         reason=reason,
         ai_analysis=ai_analysis,
+    )
+    state["smc_orderflow"] = build_smc_orderflow(
+        smc_trace=state.get("smc_trace"),
+        smc_diagnostic=state.get("smc_diagnostic"),
+        range_diagnostic=state.get("range_diagnostic"),
+        best_setup=state.get("best_setup"),
+        current_price=state.get("price"),
     )
 
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
