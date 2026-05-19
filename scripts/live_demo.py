@@ -1308,6 +1308,15 @@ def main():
             # 5. Strategy (v1 trending setups — always generated)
             setups = aggregator.generate_setups(data, price)
             print(f"  SMC 形态信号: {len(setups)}")
+            if len(setups) == 0:
+                diag = getattr(aggregator, "_last_setup_diagnostic", {})
+                if diag:
+                    stage_reject = diag.get("stage_reject", "unknown")
+                    h1_zones = diag.get("h1_zones_count", 0)
+                    zone_rejects = diag.get("zone_rejects", {})
+                    # Clean up zone_rejects for display by removing zeroes
+                    reject_details = {k: v for k, v in zone_rejects.items() if v > 0} if isinstance(zone_rejects, dict) else {}
+                    print(f"  [诊断拦截] 原因: {stage_reject} | H1可用区域数: {h1_zones} | 区域过滤明细: {reject_details}")
 
             # 6. Dual-mode action routing
             session, _ = get_session_info(cfg=cfg)

@@ -1,6 +1,6 @@
 {
-  "cycle": 1,
-  "timestamp": "2026-05-19T00:31:11.134483+00:00",
+  "cycle": 11,
+  "timestamp": "2026-05-19T03:00:03.437387+00:00",
   "runtime_status": "waiting_next_m15",
   "symbol": "XAUUSD",
   "price": null,
@@ -23,7 +23,7 @@
   "position_size": 0.0,
   "htf_bias_conf": 0.0,
   "htf_bias_tier": "neutral",
-  "next_bar_close": "2026-05-19T00:45:00+00:00",
+  "next_bar_close": "2026-05-19T03:15:00+00:00",
   "ai_enabled": true,
   "ai_regime_enabled": true,
   "smc_trace": {

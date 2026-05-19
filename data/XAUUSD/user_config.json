@@ -1,0 +1,14 @@
+{
+  "risk": {
+    "boundary_band_pct": 0.3,
+    "min_rr_ratio": 1.2,
+    "asian_daily_quota": 2
+  },
+  "sessions": {
+    "asian_enabled": true,
+    "london_enabled": true,
+    "ny_enabled": true,
+    "ai_filter_neutral_block": false
+  },
+  "updated_at": "2026-05-19T02:43:15.846194+00:00"
+}
