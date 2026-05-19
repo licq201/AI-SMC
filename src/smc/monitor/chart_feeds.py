@@ -10,7 +10,7 @@ import polars as pl
 from smc.data.schemas import Timeframe
 from smc.smc_core.types import SMCSnapshot
 
-__all__ = ["serialize_smc", "TF_MAP", "tf_bar_duration"]
+__all__ = ["serialize_smc", "TF_MAP", "tf_bar_duration", "swing_length_for"]
 
 TF_MAP: dict[str, Timeframe] = {
     "M15": Timeframe.M15,
@@ -31,7 +31,9 @@ _SWING_LENGTHS: dict[str, int] = {
 }
 
 
-def _to_unix(dt: datetime) -> int:
+def _to_unix(dt: datetime | int) -> int:
+    if isinstance(dt, int):
+        return dt
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return int(dt.timestamp())
