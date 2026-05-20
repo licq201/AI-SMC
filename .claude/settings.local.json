@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -m pytest tests/smc/unit/monitor/test_chart_feeds.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/smc/unit/monitor/test_chart_feeds.py -v)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(\"E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest tests/smc/unit/monitor/test_chart_feeds.py -v)",
+      "Bash(.\\\\.venv\\\\Scripts\\\\python.exe *)",
+      "Bash(git commit *)",
+      "Bash(cd /d E:\\\\bossquant\\\\MQ5\\\\AI-SMC)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -c \"import scripts.dashboard_server; print\\('OK'\\)\")",
+      "Bash(.venv/Scripts/python.exe -c \"import scripts.dashboard_server; print\\('OK'\\)\")",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":8765\")",
+      "Bash(taskkill *)",
+      "Bash(python -m py_compile scripts/dashboard_server.py)",
+      "Bash(python3)",
+      "Bash(python -m mypy scripts/dashboard_server.py --no-error-summary)",
+      "Bash(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe *)",
+      "PowerShell(&\"E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import ast; ast.parse\\(open\\('E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\scripts\\\\dashboard_server.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "PowerShell(&\"E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import ast; ast.parse\\(open\\(r'E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\scripts\\\\dashboard_server.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "PowerShell(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe -c \"import ast; ast.parse\\(open\\('E:/bossquant/MQ5/AI-SMC/scripts/dashboard_server.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "PowerShell(git *)",
+      "PowerShell(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/ -x -q --tb=short 2>&1 | Select-Object -Last 30)",
+      "PowerShell(head *)",
+      "PowerShell(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe -m pytest \"tests/smc/unit/monitor/test_chart_feeds.py\" -v 2>&1)",
+      "PowerShell(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe -c \"from smc.monitor.chart_feeds import serialize_smc, TF_MAP, tf_bar_duration, swing_length_for; print\\('imports OK'\\)\")",
+      "PowerShell(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/ -q --tb=no --ignore=\"tests/dashboard/test_smc_orderflow_contract.py\" 2>&1 | Select-Object -Last 5)",
+      "PowerShell(E:\\\\bossquant\\\\MQ5\\\\AI-SMC\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/ -q --tb=no 2>&1 | Select-Object -Last 5)",
+      "PowerShell(git stash *)"
+    ]
+  }
+}

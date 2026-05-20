@@ -111,6 +111,23 @@ const S = {
 
 // ─── Limits per timeframe ─────────────────────────────────────────────────
 const TF_LIMITS = { M15: 500, H1: 400, H4: 300, D1: 250 };
+const MT5_SERVER_TIME_OFFSET_SEC = 3 * 60 * 60;
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function formatChartTime(time, withDate = false) {
+  const ts = typeof time === 'number' ? time : (time?.timestamp ?? 0);
+  const d = new Date((ts + MT5_SERVER_TIME_OFFSET_SEC) * 1000);
+  const hm = `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+  if (!withDate) return hm;
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${hm}`;
+}
+
+function formatMt5ServerNow() {
+  return formatChartTime(Math.floor(Date.now() / 1000), true);
+}
 
 // ─── Colors ───────────────────────────────────────────────────────────────
 const C = {
@@ -132,6 +149,9 @@ const wrapEl    = document.getElementById('chart-wrap');
 const chart = LightweightCharts.createChart(chartEl, {
   width:  wrapEl.clientWidth,
   height: wrapEl.clientHeight,
+  localization: {
+    timeFormatter: time => formatChartTime(time, true),
+  },
   layout: {
     background: { type: 'solid', color: '#0F172A' },
     textColor:  '#94A3B8',
@@ -146,6 +166,7 @@ const chart = LightweightCharts.createChart(chartEl, {
     borderColor:    'rgba(148,163,184,0.2)',
     timeVisible:    true,
     secondsVisible: false,
+    tickMarkFormatter: time => formatChartTime(time),
   },
 });
 S.chart = chart;
@@ -200,7 +221,7 @@ async function loadData() {
     renderCandles();
     redraw();
     updateLegend();
-    setStatus(`更新于 ${new Date().toLocaleTimeString('zh-CN')}`, '#94A3B8');
+    setStatus(`更新于 MT5 ${formatMt5ServerNow()} (UTC+3)`, '#94A3B8');
   } catch (e) {
     setStatus(`连接失败: ${e.message}`, '#EF4444');
   }

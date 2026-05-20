@@ -64,7 +64,7 @@ def main() -> int:
         "magic": 19760418,
         "comment": "4.6-X smoke",
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": mt5.ORDER_FILLING_FOK,
     }
 
     print()
@@ -108,7 +108,7 @@ def main() -> int:
             "magic": 19760418,
             "comment": "4.6-X smoke close",
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": mt5.ORDER_FILLING_FOK,
         }
         close_result = mt5.order_send(close_request)
         if close_result and close_result.retcode == mt5.TRADE_RETCODE_DONE:

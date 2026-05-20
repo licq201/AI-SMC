@@ -10,7 +10,14 @@ import polars as pl
 from smc.data.schemas import Timeframe
 from smc.smc_core.types import SMCSnapshot
 
-__all__ = ["serialize_smc", "TF_MAP", "tf_bar_duration", "swing_length_for"]
+__all__ = [
+    "serialize_smc",
+    "TF_MAP",
+    "tf_bar_duration",
+    "swing_length_for",
+]
+
+MT5_SERVER_TIME_OFFSET = timedelta(hours=3)
 
 TF_MAP: dict[str, Timeframe] = {
     "M15": Timeframe.M15,
@@ -43,7 +50,7 @@ def serialize_smc(snapshot: SMCSnapshot, bars: pl.DataFrame) -> dict[str, Any]:
     candles: list[dict[str, Any]] = []
     for row in bars.iter_rows(named=True):
         ts = row["ts"]
-        t = _to_unix(ts) if isinstance(ts, datetime) else int(ts)
+        t = _to_unix(ts)
         candles.append({
             "time":  t,
             "open":  round(float(row["open"]),  5),

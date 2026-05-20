@@ -1706,7 +1706,7 @@ def main():
                         "magic": _effective_magic,
                         "comment": f"AI-SMC {best.trigger[:15]}",
                         "type_time": mt5.ORDER_TIME_GTC,
-                        "type_filling": mt5.ORDER_FILLING_IOC,
+                        "type_filling": mt5.ORDER_FILLING_FOK,
                     }
                 if _mt5_execute:
                     # Round 5 stability R1: mark critical section so the

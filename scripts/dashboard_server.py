@@ -412,9 +412,8 @@ def get_candles(
         candles = []
         for row in df.iter_rows(named=True):
             ts = row["ts"]
-            t  = int(ts.timestamp()) if isinstance(ts, datetime) else int(ts)
             candles.append({
-                "time":  t,
+                "time":  int(ts.timestamp()) if isinstance(ts, datetime) else int(ts),
                 "open":  round(float(row["open"]),  5),
                 "high":  round(float(row["high"]),  5),
                 "low":   round(float(row["low"]),   5),

@@ -125,6 +125,24 @@ class TestSMCConfigMacroMagic:
         assert cfg.magic_for(19760419, "_macro") == 19760428
 
 
+class TestSMCConfigMT5Credentials:
+    """MT5 credential readiness checks."""
+
+    def test_login_zero_with_password_and_server_can_attach_active_account(self) -> None:
+        """SMC_MT5_LOGIN=0 means attach to current active MT5 account."""
+        from pydantic import SecretStr
+        from smc.config import SMCConfig
+
+        cfg = SMCConfig(
+            _env_file=None,
+            mt5_login=0,
+            mt5_password=SecretStr("secret"),
+            mt5_server="MT5-DooTechnology-Demo",
+        )
+
+        assert cfg.has_mt5_credentials() is True
+
+
 class TestSMCConfigVirtualBalanceSplit:
     """audit-r4 v5 Option B: virtual_balance_split for dual-magic sizing."""
 

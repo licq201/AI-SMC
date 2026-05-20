@@ -141,7 +141,7 @@ class MT5BrokerPort:
             "magic": self._magic,  # audit-r3 O7: cfg-driven per-symbol
             "comment": "ai-smc",
             "type_time": 0,  # GTC
-            "type_filling": 1,  # IOC
+            "type_filling": 0,  # FOK
         }
 
         result = mt5.order_send(mt5_request)
@@ -222,7 +222,7 @@ class MT5BrokerPort:
             "magic": self._magic,  # audit-r3 O7: cfg-driven per-symbol
             "comment": "ai-smc-close",
             "type_time": 0,
-            "type_filling": 1,
+            "type_filling": 0,
         }
 
         result = mt5.order_send(mt5_request)

@@ -643,8 +643,13 @@ class SMCConfig(BaseSettings):
         return self.env == "dev"
 
     def has_mt5_credentials(self) -> bool:
-        """Return True if all three MT5 connection fields are set."""
-        return bool(self.mt5_login and self.mt5_password.get_secret_value() and self.mt5_server)
+        """Return True if MT5 connection fields are usable.
+
+        ``mt5_login == 0`` is valid for attaching to the currently active MT5
+        account, so readiness depends on a non-negative login plus password
+        and server values.
+        """
+        return bool(self.mt5_login >= 0 and self.mt5_password.get_secret_value() and self.mt5_server)
 
     def has_llm(self) -> bool:
         """Return True if an Anthropic API key is configured."""

@@ -129,7 +129,7 @@ int OnInit()
    int default_magic = ResolveDefaultMagic();
    g_trade.SetExpertMagicNumber(default_magic);
    g_trade.SetDeviationInPoints(DeviationPoints);
-   g_trade.SetTypeFilling(ORDER_FILLING_IOC);
+   g_trade.SetTypeFilling(ORDER_FILLING_FOK);
 
    for (int i = 0; i < AISMC_MAX_LEGS; i++)
    {
