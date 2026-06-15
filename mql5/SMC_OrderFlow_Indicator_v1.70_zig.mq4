@@ -3124,6 +3124,10 @@ bool ShouldSkipOB(int index, string &skip_reason)
             skip_reason = "失效已移除";
             return true;
         }
+        if(HideLowQualityOB && poi_zones[index].quality_score < MinVisibleOBQualityScore) {
+            skip_reason = "低质量隐藏";
+            return true;
+        }
     } else {
         // 传统逻辑（向后兼容）
         if(!ShowMitigatedPOI && poi_zones[index].is_mitigated) {
@@ -3142,17 +3146,21 @@ color GetOBDisplayColor(int index)
     if(EnableOBLifecycle && poi_zones[index].status >= 0) {
         // 使用生命周期逻辑
         switch(poi_zones[index].status) {
-            case 0: // Fresh (高效)
+            case 0: // Fresh：原色
                 return poi_zones[index].is_bullish ? Bullish_OB_Color : Bearish_OB_Color;
-                
-            case 1: // Tested (中等)
-            case 2: // Weakened (中等)  
-            case 3: // Broken_Once (中等)
+
+            case 1: // Tested：略暗
+                return poi_zones[index].is_bullish ? clrSeaGreen : clrIndianRed;
+
+            case 2: // Weakened：更暗
                 return poi_zones[index].is_bullish ? clrDarkGreen : clrSaddleBrown;
-                
-            case 4: // Invalid (失效)
-                return Mitigated_POI_Color; // 使用灰色
-                
+
+            case 3: // Broken_Once：警戒色
+                return clrOrange;
+
+            case 4: // Invalid：灰色
+                return Mitigated_POI_Color;
+
             default:
                 return poi_zones[index].is_bullish ? Bullish_OB_Color : Bearish_OB_Color;
         }
@@ -3171,22 +3179,19 @@ string GetOBDisplayLabel(int index)
     string direction = poi_zones[index].is_bullish ? "Bullish" : "Bearish";
     
     if(EnableOBLifecycle && poi_zones[index].status >= 0) {
-        // 使用生命周期逻辑
+        // 使用生命周期逻辑：方向 + OB[+FVG] + 状态 + [等级]
+        string fvg_tag   = poi_zones[index].has_fvg_overlap ? "+FVG" : "";
+        string grade_tag = ShowOBQualityGrade ? (" [" + poi_zones[index].quality_grade + "]") : "";
+        string state_tag = "";
         switch(poi_zones[index].status) {
-            case 0: // Fresh (高效)
-                return direction + " OB (High)";
-                
-            case 1: // Tested (中等)
-            case 2: // Weakened (中等)  
-            case 3: // Broken_Once (中等)
-                return direction + " OB (Mid-" + IntegerToString(poi_zones[index].touch_count) + ")";
-                
-            case 4: // Invalid (失效)
-                return direction + " OB (Invalid)";
-                
-            default:
-                return direction + " OB";
+            case 0: state_tag = "";         break; // Fresh
+            case 1: state_tag = " Tested";  break;
+            case 2: state_tag = " Weak";    break;
+            case 3: state_tag = " Watch";   break;
+            case 4: state_tag = " Invalid"; break;
+            default: state_tag = "";        break;
         }
+        return direction + " OB" + fvg_tag + state_tag + grade_tag;
     } else {
         // 传统逻辑（向后兼容）
         string label = direction + " OB";
