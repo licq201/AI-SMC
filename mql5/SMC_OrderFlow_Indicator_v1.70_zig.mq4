@@ -1747,6 +1747,12 @@ int OnCalculate(const int rates_total,
         // 否则会导致 DrawGraphicalObjects() 每秒强制刷新。
     }
 
+    // 刷新OB/FVG重叠评分并写入OB_Quality缓冲区(供EA读取)
+    if(EnableOBLifecycle) {
+        RefreshOBFVGConfluence();
+        WriteOBQualityBuffer();
+    }
+
     // 绘制图形对象 (每次都调用，函数内部会判断是否需要重绘)
     DrawGraphicalObjects();
 
@@ -3196,6 +3202,122 @@ string GetOBLevelName(int index)
         }
     } else {
         return poi_zones[index].is_mitigated ? "Mitigated" : "Active";
+    }
+}
+
+//+------------------------------------------------------------------+
+//| 计算OB与指定FVG的价格重叠比例(以OB宽度为分母)                      |
+//+------------------------------------------------------------------+
+double GetOBFVGOverlapRatio(int ob_index, int fvg_index)
+{
+    double ob_top     = poi_zones[ob_index].top_price;
+    double ob_bottom  = poi_zones[ob_index].bottom_price;
+    double fvg_top    = poi_zones[fvg_index].top_price;
+    double fvg_bottom = poi_zones[fvg_index].bottom_price;
+
+    double overlap_low  = MathMax(ob_bottom, fvg_bottom);
+    double overlap_high = MathMin(ob_top, fvg_top);
+    if(overlap_high <= overlap_low) return 0.0;
+
+    double ob_width = ob_top - ob_bottom;
+    if(ob_width <= 0.0) return 0.0;
+    return (overlap_high - overlap_low) / ob_width;
+}
+
+//+------------------------------------------------------------------+
+//| 根据分数返回等级标签                                              |
+//+------------------------------------------------------------------+
+string GetOBGradeLabel(double score)
+{
+    if(score >= 0.80) return "A";
+    if(score >= 0.60) return "B";
+    if(score >= 0.40) return "C";
+    if(score >  0.00) return "D";
+    return "X";
+}
+
+//+------------------------------------------------------------------+
+//| 计算单个OB的质量分(基础分按状态 + 重叠/趋势加分)                   |
+//+------------------------------------------------------------------+
+double CalculateOBQualityScore(int ob_index)
+{
+    double base = 0.0;
+    switch(poi_zones[ob_index].status) {
+        case 0: base = 0.80; break; // Fresh
+        case 1: base = 0.65; break; // Tested
+        case 2: base = 0.45; break; // Weakened
+        case 3: base = 0.20; break; // Broken_Once
+        case 4: base = 0.00; break; // Invalid
+        default: base = 0.00; break;
+    }
+
+    double bonus = 0.0;
+    // 同向FVG重叠加分
+    if(poi_zones[ob_index].has_fvg_overlap) {
+        bonus += 0.15;
+        if(poi_zones[ob_index].overlap_ratio >= MinOBFVGOverlapRatio) bonus += 0.05;
+    }
+    // 与当前主趋势方向一致加分 (g_market_trend: 1=上升, -1=下降)
+    if((poi_zones[ob_index].is_bullish  && g_market_trend == 1) ||
+       (!poi_zones[ob_index].is_bullish && g_market_trend == -1)) {
+        bonus += 0.05;
+    }
+
+    double score = base + bonus;
+    if(score < 0.0) score = 0.0;
+    if(score > 1.0) score = 1.0;
+    return score;
+}
+
+//+------------------------------------------------------------------+
+//| 刷新所有OB的OB/FVG重叠与质量评分(全量扫描)                         |
+//+------------------------------------------------------------------+
+void RefreshOBFVGConfluence()
+{
+    for(int i = 0; i < poi_count; i++) {
+        if(poi_zones[i].poi_type != 1) continue; // 仅OB
+        if(poi_zones[i].status < 0) continue;     // 未启用生命周期的OB跳过
+
+        // 重置重叠信息
+        poi_zones[i].has_fvg_overlap = false;
+        poi_zones[i].overlap_fvg_bar = -1;
+        poi_zones[i].overlap_ratio   = 0.0;
+
+        // 扫描同向、未完全触及的FVG，取最大重叠比例
+        if(EnableOBFVGConfluence) {
+            for(int j = 0; j < poi_count; j++) {
+                if(poi_zones[j].poi_type != 0) continue;                         // 仅FVG
+                if(poi_zones[j].is_bullish != poi_zones[i].is_bullish) continue; // 同向
+                if(poi_zones[j].is_mitigated) continue;                          // 已触及FVG不加分
+                double ratio = GetOBFVGOverlapRatio(i, j);
+                if(ratio > poi_zones[i].overlap_ratio) {
+                    poi_zones[i].overlap_ratio   = ratio;
+                    poi_zones[i].overlap_fvg_bar = poi_zones[j].start_bar;
+                    poi_zones[i].has_fvg_overlap = true;
+                }
+            }
+        }
+
+        // 计算质量分与等级
+        poi_zones[i].quality_score = CalculateOBQualityScore(i);
+        poi_zones[i].quality_grade = GetOBGradeLabel(poi_zones[i].quality_score);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| 把每个OB的质量分写入OB_Quality缓冲区(锚点K线;同锚点取最高分)       |
+//+------------------------------------------------------------------+
+void WriteOBQualityBuffer()
+{
+    for(int i = 0; i < poi_count; i++) {
+        if(poi_zones[i].poi_type != 1) continue;
+        if(poi_zones[i].status < 0) continue;
+        int bar = poi_zones[i].start_bar;
+        if(bar < 0 || bar >= ArraySize(OB_Quality)) continue;
+        double existing = OB_Quality[bar];
+        if(existing == EMPTY_VALUE || poi_zones[i].quality_score > existing) {
+            OB_Quality[bar] = poi_zones[i].quality_score;
+        }
     }
 }
 
