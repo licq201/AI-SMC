@@ -20,7 +20,8 @@
 3. 增加 OB/FVG 同向价格重叠识别，并将其纳入 OB 质量评分。
 4. 在图表标签中显示 OB 等级和是否与 FVG 重叠，例如 `Bullish OB+FVG [A]`。
 5. 精简用户常用参数，保留高级参数但降低默认可见/默认干扰。
-6. 保持 EA 兼容性：不改变现有 indicator buffer 编号和 BOS/FVG/OB 基础输出语义。
+6. 保持 EA 兼容性：不改变现有 indicator buffer 索引 0–8 的语义。
+7. 新增一个 `OB_Quality` 数据 buffer（索引 9），作为未来 EA 读取 OB 质量分的预留机器可读通道；本阶段一次接到位，避免后续遗忘。
 
 ## 非目标
 
@@ -29,6 +30,7 @@
 - 不重构全部绘图系统。
 - 不新增外部 Python 服务或 MT4-Python 通信。
 - 不在本阶段实现 EQH/EQL、liquidity sweep 或多周期级联。
+- 不在本阶段编写消费 `OB_Quality` buffer 的 EA；只把通道接好并验证可被 `iCustom` 读取。
 
 ## 当前代码边界
 
@@ -43,6 +45,8 @@
 - `GetOBDisplayColor`、`GetOBDisplayLabel`、`GetOBLevelName`：输出状态、等级和重叠信息。
 - `DrawGraphicalObjects`：统计和绘制 OB 质量信息。
 - 新增 `RefreshOBFVGConfluence`、`CalculateOBQualityScore`、`GetOBGradeLabel`、`GetOBFVGOverlapRatio`。
+- `OnInit`：`indicator_buffers` 9→10，新增 `SetIndexBuffer(9, OB_Quality)` 与 `SetIndexStyle(9, DRAW_NONE)`。
+- 绘图/buffer 更新阶段：新增 `WriteOBQualityBuffer`（或在现有 buffer 更新处内联），把锚点 `quality_score` 写入 `OB_Quality`。
 
 ## OB 状态机设计
 
@@ -90,6 +94,10 @@ abs(close - open) / ATR >= BreakMomentumATR
 Fresh -> Tested
   条件：首次有效触及
 
+Fresh -> Broken_Once
+  条件：未经任何有效触及即被反向收盘击穿
+  说明：同一根 K 线先判断 price_in_zone 触及；若不构成触及，再判断反向破坏
+
 Tested -> Weakened
   条件：冷却后再次有效触及
 
@@ -103,7 +111,9 @@ Broken_Once -> Invalid
   条件：再次反向收盘破坏；若 RequireMomentumOnBreak=true，则该次破坏还必须满足 BreakMomentumATR
 ```
 
-关键修正：`Broken_Once -> Invalid` 必须使用“反向破坏方向”确认。多头 OB 失效看向下破底，空头 OB 失效看向上破顶；不能用顺向突破确认失效。
+新增分支说明（修订 2）：原状态机的 `Fresh` 只处理触及，不处理直接被击穿，导致一根大 K 线收盘贯穿 OB 却仍标记为 Fresh（最高质量）的鬼区。新增 `Fresh -> Broken_Once` 填补此空隙，转移时记录 `first_break_bar`、`break_momentum`。
+
+关键修正（修订 1，对应现有代码 bug）：现有 `ProcessOBLifecycle` 的 case 3（`Broken_Once -> Invalid`）方向写反——对多头 OB 它要求 `close > top_price`（向上突破）才确认失效。必须改为：`Broken_Once -> Invalid` 使用“反向破坏方向”确认。多头 OB 失效看向下破底（`close < bottom_price`），空头 OB 失效看向上破顶（`close > top_price`）；不能用顺向突破确认失效。调试日志输出本次破坏的实际方向。
 
 ## OB/FVG 重叠评分设计
 
@@ -175,6 +185,19 @@ string quality_grade;
 
 - FVG：字段保留默认值，不用于评分。
 - OB：创建时默认 `has_fvg_overlap=false`、`overlap_fvg_bar=-1`、`overlap_ratio=0.0`、`quality_score=0.0`、`quality_grade="D"`，随后由刷新函数计算。
+
+## OB_Quality buffer（EA 预留通道）
+
+为未来 EA 通过 `iCustom` 读取 OB 质量分预留一个机器可读通道。本阶段一次接到位。
+
+- `#property indicator_buffers` 由 9 改为 10。
+- 在 `OnInit` 中 `SetIndexBuffer(9, OB_Quality)`，并 `SetIndexStyle(9, DRAW_NONE)`（纯数据，不画线，不占图层）。
+- 现有索引 0–8（`BOS_Top`/`BOS_Bottom`/`CHOCH_Top`/`CHOCH_Bottom`/`FVG_Top`/`FVG_Bottom`/`OB_Top`/`OB_Bottom`/`MA21_Buffer`）的索引号和语义全部不变。
+- 写入时机：在 OB 评分刷新（`RefreshOBFVGConfluence` / `CalculateOBQualityScore`）之后、绘图阶段，将每个 OB 的 `quality_score`（0.0–1.0）写入该 OB 锚点 K 线索引位置；其余 bar 写 `EMPTY_VALUE`。
+- 每轮计算前先把可计算区间的 `OB_Quality` 重置为 `EMPTY_VALUE`，避免旧锚点残留。
+- 若同一锚点 K 线索引存在多个 OB（极少见），写入其中 `quality_score` 最高者。
+- EA 读取约定：`iCustom(Symbol(), Period(), "SMC_OrderFlow_Indicator_v1.70_zig", <参数...>, 9, shift)`，得到该 bar 的 OB 质量分；A/B/C/D 等级由 EA 端按本设计的阈值自行换算，不再单独开 buffer。
+- 等级（grade）与 `+FVG` 标记不单独占 buffer：等级可由分数阈值还原，`+FVG` 的贡献已折进分数。
 
 ## 参数精简设计
 
@@ -263,15 +286,15 @@ OB 标签：
 4. 识别 OB。
 5. 更新 FVG/OB 状态。
 6. 刷新 OB/FVG 重叠和 OB 评分。
-7. 更新 buffer。
+7. 更新 buffer（含把每个 OB 的 `quality_score` 写入 `OB_Quality` 锚点位置，其余 bar 重置为 `EMPTY_VALUE`）。
 8. 绘图。
 
 如果同一轮中先发现 OB 后发现 FVG，评分刷新函数仍会扫描全量 `poi_zones`，确保最终状态一致。
 
 ## 兼容性
 
-- 不改变 `BOS_Top`、`BOS_Bottom`、`CHOCH_Top`、`CHOCH_Bottom`、`FVG_Top`、`FVG_Bottom`、`OB_Top`、`OB_Bottom` 的 buffer 编号。
-- 不新增新的 indicator buffer。
+- 不改变 `BOS_Top`、`BOS_Bottom`、`CHOCH_Top`、`CHOCH_Bottom`、`FVG_Top`、`FVG_Bottom`、`OB_Top`、`OB_Bottom`、`MA21_Buffer`（索引 0–8）的 buffer 编号与语义。
+- 仅在末尾追加 `OB_Quality`（索引 9），`indicator_buffers` 9 → 10；不影响任何现有索引。该 buffer 为 `DRAW_NONE` 纯数据通道。
 - 不修改现有 `poi_type`：`0=FVG`、`1=OrderBlock`。
 - 不将 OB+FVG 作为第三种 `poi_type`，避免破坏旧逻辑。
 - `is_mitigated` 对 FVG 继续有效；对 OB 仅作为旧模式兼容字段。
@@ -284,12 +307,15 @@ OB 标签：
 2. 第一次回踩 OB 后从 Fresh 转为 Tested。
 3. 多次回踩后转为 Weakened。
 4. 多头 OB 被收盘向下破底后转为 Broken_Once；空头 OB 被收盘向上破顶后转为 Broken_Once。
+4b. Fresh OB 未经任何触及即被反向收盘击穿时，直接转为 Broken_Once（验证修订 2，不再永久停留 Fresh）。
+4c. 多头 OB 在 Broken_Once 后再次向下破底才转 Invalid；向上顺向突破不触发 Invalid（验证修订 1 方向修复）。
 5. Broken_Once 后再次反向破坏转为 Invalid；若 `RequireMomentumOnBreak=true`，第二次破坏必须满足 `BreakMomentumATR`。
 6. OB 与同向 FVG 有价格重叠时标签显示 `OB+FVG`，评分提升。
 7. 异向 FVG 不给 OB 加分。
 8. `RemoveInvalidOB=false` 时失效 OB 灰显；`true` 时隐藏。
 9. `HideLowQualityOB=true` 时低于 `MinVisibleOBQualityScore` 的 OB 不绘制。
-10. 现有 BOS/CHOCH/FVG/OB buffers 仍能被 EA 按原编号读取。
+10. 现有 BOS/CHOCH/FVG/OB buffers（索引 0–8）仍能被 EA 按原编号读取。
+11. `OB_Quality`（索引 9）能被 `iCustom(...,9,shift)` 读到 OB 锚点处的 `quality_score`，非锚点 bar 返回 `EMPTY_VALUE`。
 
 日志验收：
 
@@ -318,11 +344,12 @@ OB 标签：
 
 1. 调整参数默认值和参数区块注释。
 2. 扩展 `POI_Zone` 字段并初始化。
-3. 修正并升级 `ProcessOBLifecycle` 状态转移。
+3. 修正 `ProcessOBLifecycle` 的 Invalid 方向 bug（修订 1），并新增 `Fresh -> Broken_Once` 分支（修订 2）。
 4. 新增 OB/FVG 重叠扫描和评分函数。
 5. 接入绘图标签、颜色、跳过逻辑。
-6. 手工编译 MQ4，修复语法和类型问题。
-7. 用历史图表回放验证状态转移和显示结果。
+6. 新增 `OB_Quality` buffer（`indicator_buffers` 9→10、`SetIndexBuffer(9,...)`、`DRAW_NONE`），在评分后写入锚点分数。
+7. 手工编译 MQ4，修复语法和类型问题。
+8. 用历史图表回放验证状态转移和显示结果，并用一个最小测试脚本 `iCustom(...,9,shift)` 验证 `OB_Quality` 可被读取。
 
 ## 成功标准
 
