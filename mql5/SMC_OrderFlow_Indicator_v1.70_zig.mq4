@@ -200,6 +200,13 @@ struct POI_Zone {
     int last_touch_bar;         // 记录上次触及的K线索引
     int first_break_bar;        // 记录首次突破的K线索引
     double break_momentum;      // 突破时的动能强度（实体/ATR比值）
+
+    // --- OB/FVG 重叠与质量评分新增字段 ---
+    bool   has_fvg_overlap;     // 是否与同向FVG价格重叠
+    int    overlap_fvg_bar;     // 重叠FVG的锚点bar(-1=无)
+    double overlap_ratio;       // 重叠宽度/OB宽度
+    double quality_score;       // OB质量分 0.0-1.0
+    string quality_grade;       // 等级 A/B/C/D/X
 };
 
 struct Structure_Zone {
@@ -2743,7 +2750,14 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
         poi_zones[poi_count].first_break_bar = -1;
         poi_zones[poi_count].break_momentum = 0.0;
     }
-    
+
+    // 初始化OB/FVG重叠与质量评分字段（FVG保留默认值，不参与评分）
+    poi_zones[poi_count].has_fvg_overlap = false;
+    poi_zones[poi_count].overlap_fvg_bar = -1;
+    poi_zones[poi_count].overlap_ratio   = 0.0;
+    poi_zones[poi_count].quality_score   = 0.0;
+    poi_zones[poi_count].quality_grade   = "D";
+
     // string type_name = (type == 0) ? "FVG" : "OB";
     // Print("SMC: 添加新的", type_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]), 
     //       " 当前总数: ", poi_count + 1, "/", MaxPOIZones * 2);
