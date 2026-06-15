@@ -3015,13 +3015,21 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
     
     // 状态机逻辑
     switch(poi_zones[index].status) {
-        case 0: // Fresh -> Tested
+        case 0: // Fresh -> Tested 或 (未触及即被击穿) -> Broken_Once
             if(price_in_zone && IsValidTouch(index, current_bar)) {
                 poi_zones[index].status = 1;
                 poi_zones[index].touch_count = 1;
                 poi_zones[index].last_touch_bar = current_bar;
                 g_data_version++;
                 LogOBLifecycleEvent(index, current_bar, "首次触及", "Fresh -> Tested");
+            } else if((poi_zones[index].is_bullish && bearish_break) ||
+                      (!poi_zones[index].is_bullish && bullish_break)) {
+                // 未登记任何有效触及即被反向收盘击穿：直接进入观察状态
+                poi_zones[index].status = 3;
+                poi_zones[index].first_break_bar = current_bar;
+                poi_zones[index].break_momentum = momentum;
+                g_data_version++;
+                LogOBLifecycleEvent(index, current_bar, "未触及即被击穿", "Fresh -> Broken_Once");
             }
             break;
             
@@ -3043,7 +3051,8 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
             break;
             
         case 3: // Broken_Once -> Invalid 或 -> Weakened (假突破复活)
-            if((poi_zones[index].is_bullish && bullish_break) || (!poi_zones[index].is_bullish && bearish_break)) {
+            // 失效必须用"反向破坏方向"确认：多头看向下破底，空头看向上破顶
+            if((poi_zones[index].is_bullish && bearish_break) || (!poi_zones[index].is_bullish && bullish_break)) {
                 // 双重确认失效
                 bool has_momentum = !RequireMomentumOnBreak || momentum >= BreakMomentumATR;
                 if(has_momentum) {
