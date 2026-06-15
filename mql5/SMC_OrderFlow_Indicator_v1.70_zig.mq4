@@ -15,7 +15,7 @@
 #property description "v1.57: 缠论不成笔时修正回溯逻辑(删除last非丢弃current)"
 #property strict
 #property indicator_chart_window
-#property indicator_buffers 9
+#property indicator_buffers 10
 
 //+------------------------------------------------------------------+
 //| 输入参数定义                                                      |
@@ -314,6 +314,7 @@ double FVG_Bottom[];          // Buffer 5: FVG下轨
 double OB_Top[];              // Buffer 6: OB上轨
 double OB_Bottom[];           // Buffer 7: OB下轨
 double MA21_Buffer[];         // Buffer 8: MA21均线缓冲区
+double OB_Quality[];          // Buffer 9: OB质量分(0.0-1.0,DRAW_NONE,供EA经iCustom读取)
 
 // 时间限制相关变量
 bool license_valid = true;
@@ -1509,7 +1510,8 @@ int OnInit()
     SetIndexBuffer(6, OB_Top);
     SetIndexBuffer(7, OB_Bottom);
     SetIndexBuffer(8, MA21_Buffer);
-    
+    SetIndexBuffer(9, OB_Quality);
+
     // 设置缓冲区样式 - 所有缓冲区不直接绘制，由图形对象处理
     SetIndexStyle(0, DRAW_NONE);
     SetIndexStyle(1, DRAW_NONE);
@@ -1525,7 +1527,8 @@ int OnInit()
     } else {
         SetIndexStyle(8, DRAW_NONE);
     }
-    
+    SetIndexStyle(9, DRAW_NONE);
+
     // 设置缓冲区标签
     SetIndexLabel(0, "BOS Top");
     SetIndexLabel(1, "BOS Bottom");
@@ -1536,7 +1539,8 @@ int OnInit()
     SetIndexLabel(6, "OB Top");
     SetIndexLabel(7, "OB Bottom");
     SetIndexLabel(8, "MA21");
-    
+    SetIndexLabel(9, "OB Quality");
+
     // 设置空值
     SetIndexEmptyValue(0, EMPTY_VALUE);
     SetIndexEmptyValue(1, EMPTY_VALUE);
@@ -1547,7 +1551,8 @@ int OnInit()
     SetIndexEmptyValue(6, EMPTY_VALUE);
     SetIndexEmptyValue(7, EMPTY_VALUE);
     SetIndexEmptyValue(8, EMPTY_VALUE);
-    
+    SetIndexEmptyValue(9, EMPTY_VALUE);
+
     // 初始化数组
     ArrayResize(swing_points, 1000);
     ArrayResize(poi_zones, MaxFVGZones + MaxOBZones);
@@ -3214,7 +3219,8 @@ void UpdateBuffers(int current_bar)
     FVG_Bottom[current_bar] = EMPTY_VALUE;
     OB_Top[current_bar] = EMPTY_VALUE;
     OB_Bottom[current_bar] = EMPTY_VALUE;
-    
+    OB_Quality[current_bar] = EMPTY_VALUE;
+
     // 更新结构区域缓冲区 (BOS/CHOCH) - 与K线同步显示实际数值
     for(int i = 0; i < structure_count; i++) {
         // 检查当前K线是否有结构区域形成
