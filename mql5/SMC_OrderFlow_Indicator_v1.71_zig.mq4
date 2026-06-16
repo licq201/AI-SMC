@@ -2688,20 +2688,22 @@ void IdentifyOrderBlocksFromStructure(const double &open[], const double &high[]
     for(int s = 0; s < structure_count; s++) {
         int   brk_bar    = structure_zones[s].start_bar;   // 突破发生的bar
         bool  is_bullish = structure_zones[s].is_bullish;  // 突破方向
-        if(brk_bar < 1 || brk_bar >= total) continue;
+        if(brk_bar < 0 || brk_bar >= total) continue;
 
-        int lo = MathMax(brk_bar - 5, 0);
+        // [v1.71修复] OB在突破之前(时间更早=更高index)。从brk_bar向更旧方向搜索,
+        // 跳过同向冲击K线,取第一根反向K线作为OB。窗口放宽以容纳多根冲击腿。
+        int hi = MathMin(brk_bar + 10, total - 1);
         if(is_bullish) {
-            // 多头突破:找突破前最近一根阴线作为看涨OB
-            for(int i = brk_bar - 1; i >= lo; i--) {
+            // 多头突破:找突破前(更旧)最近一根阴线作为看涨OB
+            for(int i = brk_bar + 1; i <= hi; i++) {
                 if(close[i] < open[i]) {
                     if(!OBExistsAtBar(i)) AddPOIZone(i, high[i], low[i], true, 1);
                     break;
                 }
             }
         } else {
-            // 空头突破:找突破前最近一根阳线作为看跌OB
-            for(int i = brk_bar - 1; i >= lo; i--) {
+            // 空头突破:找突破前(更旧)最近一根阳线作为看跌OB
+            for(int i = brk_bar + 1; i <= hi; i++) {
                 if(close[i] > open[i]) {
                     if(!OBExistsAtBar(i)) AddPOIZone(i, high[i], low[i], false, 1);
                     break;
