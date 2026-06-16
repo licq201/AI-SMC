@@ -65,7 +65,7 @@ extern int    LiquidityReclaimWindow = 1;   // Liquidity Grab 回收确认窗口
 extern double LiquidityMinOverrunATR = 0.10;// 最小超越幅度(以ATR比例)
 
 extern double FVGQualityThreshold = 0.0;    // FVG 最低质量阈值(0=关闭,标准库无此过滤) [v1.71]
-extern bool   OB_OnlyDrive        = false;   // 仅绑定驱动段产生的OB
+extern bool   OB_OnlyDrive        = false;   // [已废弃 v1.71] OB改为结构突破事件驱动,本参数不再生效
 
 extern bool   UsePremiumDiscount  = false;   // 启用折价/溢价过滤(外部结构50%)
 extern bool   PreferGolden62      = false;   // 62%作为优先条件(更优位置)
@@ -1708,7 +1708,8 @@ int OnCalculate(const int rates_total,
             if (i >= 2) IdentifyFVG(i, open, high, low, close);
 
             // 识别Order Blocks (分析当前位置及历史K线模式)
-            if (i >= 5) IdentifyOrderBlocks(i, open, high, low, close);
+            // [v1.71] OB 改为结构突破事件驱动,移到结构最终化之后(见 IdentifyOrderBlocksFromStructure)
+            // if (i >= 5) IdentifyOrderBlocks(i, open, high, low, close);
 
             // 更新POI区域状态 (检查当前K线是否触及历史POI)
             UpdatePOIStatus(i, high, low, close);
@@ -1738,6 +1739,12 @@ int OnCalculate(const int rates_total,
             // 注意：分型标记绘制移到DrawGraphicalObjects之后，避免被清除
         }
         // --- 摆点后置过滤结束 ---
+
+        // [v1.71] 结构最终确定后,基于突破事件生成OB,并回放生命周期(结构OB在主循环后创建)
+        IdentifyOrderBlocksFromStructure(open, high, low, close);
+        for(int ob_i = limit; ob_i >= 0; ob_i--) {
+            UpdatePOIStatus(ob_i, high, low, close);
+        }
 
         // V1.62：后置裁剪，确保只保留每种类型最新的N个（删除超出限制的旧对象）
         TrimStructureZonesToNewest();
@@ -2668,6 +2675,51 @@ void IdentifyOrderBlocks(int current_bar, const double &open[], const double &hi
             }
         }
     }
+}
+
+//+------------------------------------------------------------------+
+//| 结构驱动的OB识别(v1.71):遍历最终结构突破事件回溯生成OB           |
+//| 多头突破→突破bar前最近一根阴线;空头突破→最近一根阳线;5根窗口     |
+//+------------------------------------------------------------------+
+void IdentifyOrderBlocksFromStructure(const double &open[], const double &high[],
+                                      const double &low[], const double &close[])
+{
+    int total = ArraySize(close);
+    for(int s = 0; s < structure_count; s++) {
+        int   brk_bar    = structure_zones[s].start_bar;   // 突破发生的bar
+        bool  is_bullish = structure_zones[s].is_bullish;  // 突破方向
+        if(brk_bar < 1 || brk_bar >= total) continue;
+
+        int lo = MathMax(brk_bar - 5, 0);
+        if(is_bullish) {
+            // 多头突破:找突破前最近一根阴线作为看涨OB
+            for(int i = brk_bar - 1; i >= lo; i--) {
+                if(close[i] < open[i]) {
+                    if(!OBExistsAtBar(i)) AddPOIZone(i, high[i], low[i], true, 1);
+                    break;
+                }
+            }
+        } else {
+            // 空头突破:找突破前最近一根阳线作为看跌OB
+            for(int i = brk_bar - 1; i >= lo; i--) {
+                if(close[i] > open[i]) {
+                    if(!OBExistsAtBar(i)) AddPOIZone(i, high[i], low[i], false, 1);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| 去重辅助:指定锚点bar上是否已存在OB [v1.71]                        |
+//+------------------------------------------------------------------+
+bool OBExistsAtBar(int bar)
+{
+    for(int k = 0; k < poi_count; k++) {
+        if(poi_zones[k].poi_type == 1 && poi_zones[k].start_bar == bar) return true;
+    }
+    return false;
 }
 
 
