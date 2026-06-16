@@ -3532,11 +3532,17 @@ void DrawGraphicalObjects()
                     continue;
                 }
                 
+                // [v1.71] 已填充FVG默认隐藏(除非 ShowMitigatedPOI 显式打开)
+                if(poi_zones[i].is_mitigated && !ShowMitigatedPOI) {
+                    poi_zones[i].is_drawn = true;
+                    continue;
+                }
                 color zone_color = poi_zones[i].is_mitigated ? Mitigated_POI_Color :
                                   (poi_zones[i].is_bullish ? Bullish_FVG_Color : Bearish_FVG_Color);
-                string label_text = poi_zones[i].is_bullish ? "Bullish FVG" : "Bearish FVG";
-                if(poi_zones[i].is_mitigated) label_text += " (Mitigated)";
-                
+                int fvg_pct = (int)MathRound(poi_zones[i].fill_pct * 100.0);
+                string label_text = (poi_zones[i].is_bullish ? "Bullish FVG" : "Bearish FVG")
+                                  + " " + IntegerToString(fvg_pct) + "%";
+
                 DrawPOIZone(i, "FVG", zone_color, label_text);
                 poi_zones[i].is_drawn = true;
                 fvg_drawn++;
