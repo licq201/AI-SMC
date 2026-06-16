@@ -2487,6 +2487,32 @@ int FindLatestUnbrokenStructure(int structure_type)
 }
 
 //+------------------------------------------------------------------+
+//| 尝试把新FVG并入已存在的同向、价格重叠的最近FVG [v1.71]            |
+//| 返回 true 表示已合并(调用方不再 AddPOIZone)                       |
+//+------------------------------------------------------------------+
+bool TryJoinConsecutiveFVG(double new_top, double new_bottom, bool is_bullish)
+{
+    if(!FVG_JoinConsecutive) return false;
+    for(int i = poi_count - 1; i >= 0; i--) {
+        if(poi_zones[i].poi_type != 0) continue;          // 仅FVG
+        if(poi_zones[i].is_mitigated) continue;
+        if(poi_zones[i].is_bullish != is_bullish) continue;
+        // 价格重叠判定
+        double ov_low  = MathMax(poi_zones[i].bottom_price, new_bottom);
+        double ov_high = MathMin(poi_zones[i].top_price, new_top);
+        if(ov_high >= ov_low) {
+            // 并入:扩展为并集,重置绘制标记
+            poi_zones[i].top_price    = MathMax(poi_zones[i].top_price, new_top);
+            poi_zones[i].bottom_price = MathMin(poi_zones[i].bottom_price, new_bottom);
+            poi_zones[i].is_drawn     = false;
+            g_data_version++;
+            return true;
+        }
+    }
+    return false;
+}
+
+//+------------------------------------------------------------------+
 //| 识别Fair Value Gap (FVG) - 优化为从旧到新的计算顺序             |
 //+------------------------------------------------------------------+
 void IdentifyFVG(int current_bar, const double &open[], const double &high[], const double &low[], const double &close[])
@@ -2536,7 +2562,8 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
                 }
                 if(quality >= FVGQualityThreshold && pd_ok) {
                     // FVG区域标记在中间K线上
-                    AddPOIZone(current_bar + 1, low[current_bar], high[current_bar + 2], true, 0);
+                    if(!TryJoinConsecutiveFVG(low[current_bar], high[current_bar + 2], true))
+                        AddPOIZone(current_bar + 1, low[current_bar], high[current_bar + 2], true, 0);
                 }
             }
         }
@@ -2573,7 +2600,8 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
                 }
                 if(quality >= FVGQualityThreshold && pd_ok) {
                     // FVG区域标记在中间K线上
-                    AddPOIZone(current_bar + 1, low[current_bar + 2], high[current_bar], false, 0);
+                    if(!TryJoinConsecutiveFVG(low[current_bar + 2], high[current_bar], false))
+                        AddPOIZone(current_bar + 1, low[current_bar + 2], high[current_bar], false, 0);
                 }
             }
         }
