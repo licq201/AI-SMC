@@ -2923,43 +2923,48 @@ void UpdatePOIStatus(int current_bar, const double &high[], const double &low[],
 }
 
 //+------------------------------------------------------------------+
-//| 处理FVG状态（保持原有逻辑）                                       |
+//| 处理FVG状态(v1.71:部分填充追踪,对齐标准渗透深度口径)            |
 //+------------------------------------------------------------------+
 void ProcessFVGStatus(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].is_mitigated) return;
-        
-        bool is_mitigated = false;
-        string mitigation_reason = "";
-        
+
+    double top    = poi_zones[index].top_price;
+    double bottom = poi_zones[index].bottom_price;
+    double gap    = top - bottom;
+    if(gap <= 0) { poi_zones[index].is_mitigated = true; g_data_version++; return; }
+
+    double new_pct = poi_zones[index].fill_pct;
     if(poi_zones[index].is_bullish) {
-                // 看涨FVG：只有价格跌破底部边界才算被完全触及
-        if(close[current_bar] < poi_zones[index].bottom_price || 
-           low[current_bar] < poi_zones[index].bottom_price) {
-                    is_mitigated = true;
-                    mitigation_reason = "完全跌破底部边界";
-                }
-            } else {
-                // 看跌FVG：只有价格突破顶部边界才算被完全触及
-        if(close[current_bar] > poi_zones[index].top_price || 
-           high[current_bar] > poi_zones[index].top_price) {
-                    is_mitigated = true;
-                    mitigation_reason = "完全突破顶部边界";
-            }
+        // 多头FVG:价格自顶向下渗透(bar_low 下探入区)
+        if(low[current_bar] < top) {
+            double penetration = top - MathMax(low[current_bar], bottom);
+            new_pct = penetration / gap;
         }
-        
-        if(is_mitigated) {
+    } else {
+        // 空头FVG:价格自底向上渗透(bar_high 上行入区)
+        if(high[current_bar] > bottom) {
+            double penetration = MathMin(high[current_bar], top) - bottom;
+            new_pct = penetration / gap;
+        }
+    }
+    // 单调不减
+    if(new_pct > poi_zones[index].fill_pct) {
+        poi_zones[index].fill_pct = MathMin(1.0, new_pct);
+        g_data_version++;
+    }
+
+    // 达到隐藏阈值即标记 mitigated
+    if(poi_zones[index].fill_pct >= FVGMitigationThreshold && !poi_zones[index].is_mitigated) {
         poi_zones[index].is_mitigated = true;
         g_data_version++;
-        
         string direction = poi_zones[index].is_bullish ? "看涨" : "看跌";
-            
-            if(EnableAlerts && AlertOnPOIEntry) {
-                bool cooled = (TimeCurrent() - g_last_signal_time) >= (CooldownBars * PeriodSeconds());
+        if(EnableAlerts && AlertOnPOIEntry) {
+            bool cooled = (TimeCurrent() - g_last_signal_time) >= (CooldownBars * PeriodSeconds());
             bool zone_available = (poi_zones[index].trigger_count < MaxTriggersPerZone);
-                if(cooled && zone_available) {
-                Alert("SMC: ", direction, " FVG 被完全触及 at ", Symbol(), " - ", mitigation_reason);
-                    g_last_signal_time = TimeCurrent();
+            if(cooled && zone_available) {
+                Alert("SMC: ", direction, " FVG 已填充 ", DoubleToString(poi_zones[index].fill_pct*100,0), "% at ", Symbol());
+                g_last_signal_time = TimeCurrent();
                 poi_zones[index].trigger_count++;
             }
         }
