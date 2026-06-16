@@ -5,9 +5,10 @@
 //+------------------------------------------------------------------+
 #property copyright "SMC Trading System"
 #property link      "https://bbs.sunwy.com"
-#property version   "1.70"
+#property version   "1.71"
 #property description "SMC_OrderFlow_Indicator, 专业SMC订单流市场结构分析指标 - BOS/CHOCH优化版"
 #property description "author:博思客 V:2030988"
+#property description "v1.71: FVG/OB对齐标准(Python smc_core)—FVG放宽+部分填充+合并连续;OB结构突破驱动+影线失效口径"
 #property description "v1.70: 新增ZigZag摆点前置过滤(缠论之前,严格交集,开关EnableZigZagFilter默认true)"
 #property description "v1.69: 缠论V1.64极短笔收窄(方案A)—新低/新高延伸时不丢current，避免真LL被吞后误连4-7"
 #property description "v1.67: 回迁缠论不成笔过滤为chan_1逻辑，修复LH/HL/LH/LL/HH误连2-5成笔"
