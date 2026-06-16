@@ -3,7 +3,7 @@
 Assembles the 4 guard states operators need to see at-a-glance:
   - consec_loss_halt     — "亏 3 单停" streak halter
   - phase1a_breaker      — Asian session circuit breaker
-  - asian_range_quota    — 1/UTC-day Asian range open cap
+  - asian_range_quota    — configurable UTC-day Asian range open cap
   - drawdown_guard       — %-based daily loss + total drawdown backstop
 
 Reads state JSON files and live_state.json; no MT5 coupling so pytest can
@@ -73,6 +73,9 @@ def build_guards_snapshot(
     current = now if now is not None else datetime.now(timezone.utc)
     today = current.date()
     warnings: list[str] = []
+    user_config = _load_json_quiet(data_root / "user_config.json", warnings, "user_config")
+    risk = user_config.get("risk") if isinstance(user_config, dict) else None
+    configured_quota = risk.get("asian_daily_quota") if isinstance(risk, dict) else 1
 
     consec = _load_json_quiet(data_root / "consec_loss_state.json", warnings, "consec_loss_state")
     phase1a = _load_json_quiet(data_root / "phase1a_breaker_state.json", warnings, "phase1a_breaker_state")
@@ -81,7 +84,7 @@ def build_guards_snapshot(
 
     consec_state = _build_consec_state(consec, consec_loss_limit)
     phase1a_state = _build_phase1a_state(phase1a)
-    quota_state = _build_quota_state(quota, today)
+    quota_state = _build_quota_state(quota, today, default_limit=configured_quota)
     drawdown_state = _build_drawdown_state(
         live,
         max_daily_loss_pct=max_daily_loss_pct,
@@ -154,14 +157,24 @@ def _build_phase1a_state(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_quota_state(state: dict[str, Any], today) -> dict[str, Any]:
+def _build_quota_state(state: dict[str, Any], today, *, default_limit: int = 1) -> dict[str, Any]:
     last_open_iso = state.get("last_open_date")
-    exhausted = last_open_iso == today.isoformat()
+    daily_limit = _coerce_int(state.get("daily_limit") if state.get("daily_limit") is not None else default_limit, default=default_limit)
+    opens_count = _coerce_int(state.get("opens_count"), default=0)
+    if last_open_iso and "opens_count" not in state:
+        # Legacy state only had last_open_date, meaning one slot was consumed.
+        opens_count = 1
+    if last_open_iso != today.isoformat():
+        opens_count = 0
+    exhausted = opens_count >= daily_limit
     status: Status = "red" if exhausted else "green"
     return {
         "status": status,
         "exhausted": exhausted,
         "last_open_date": last_open_iso,
+        "opens_count": opens_count,
+        "daily_limit": daily_limit,
+        "remaining": max(0, daily_limit - opens_count),
     }
 
 
@@ -252,6 +265,13 @@ def _coerce_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_int(value: Any, *, default: int) -> int:
+    try:
+        return max(1 if default >= 1 else 0, int(value))
+    except (TypeError, ValueError):
+        return default
 
 
 __all__ = ["build_guards_snapshot"]

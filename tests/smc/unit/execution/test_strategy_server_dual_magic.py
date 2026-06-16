@@ -57,6 +57,37 @@ def _write_state(tmp_path: Path, symbol: str, suffix: str, state: dict) -> None:
 # ---------------------------------------------------------------------------
 
 class TestSignalsArrayShape:
+    def test_broker_suffix_plus_symbol_maps_to_xauusd(self, client, tmp_path):
+        """Broker symbols like XAUUSD+ must read canonical XAUUSD state."""
+        _write_state(tmp_path, "XAUUSD", "", {
+            "timestamp": "2026-04-18T10:00:00+00:00",
+            "cycle": 42,
+            "action": "BUY",
+            "trading_mode": "trending",
+            "best_setup": {
+                "direction": "long",
+                "entry": 2350.0, "sl": 2348.0, "tp1": 2354.0,
+                "position_size_lots": 0.3,
+                "confluence": 0.7,
+            },
+        })
+        resp = client.get("/signal?symbol=XAUUSD%2B")
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["symbol"] == "XAUUSD"
+        assert body["signals"][0]["action"] == "BUY"
+
+    def test_unescaped_plus_decoded_as_space_still_maps_to_xauusd(self, client, tmp_path):
+        """EA logs may show raw XAUUSD+; query parsing decodes bare + as space."""
+        _write_state(tmp_path, "XAUUSD", "", {
+            "timestamp": "2026-04-18T10:00:00+00:00",
+            "cycle": 43,
+            "action": "HOLD",
+        })
+        resp = client.get("/signal?symbol=XAUUSD+")
+        assert resp.status_code == 200
+        assert resp.json()["symbol"] == "XAUUSD"
+
     def test_signals_array_present(self, client, tmp_path):
         _write_state(tmp_path, "XAUUSD", "", {
             "timestamp": "2026-04-18T10:00:00+00:00",

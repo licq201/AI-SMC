@@ -11,5 +11,6 @@ REM NOTE: --loop uvloop is POSIX-only; Windows uses asyncio (default).
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
-cd /d C:\AI-SMC
-.venv\Scripts\uvicorn.exe scripts.strategy_server:app --host 127.0.0.1 --port 8080 --workers 2 --loop asyncio --log-level warning >> logs\strategy_server_stdout.log 2>> logs\strategy_server_stderr.log
+set PATH=E:\Python311;E:\Python311\DLLs;%~dp0..\.venv\Scripts;%PATH%
+cd /d "%~dp0.."
+.venv\Scripts\python.exe scripts\strategy_server.py >> logs\strategy_server_stdout.log 2>> logs\strategy_server_stderr.log

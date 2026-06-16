@@ -105,6 +105,16 @@ _LEGS: tuple[str, ...] = ("", "_macro")
 _TEST_SIGNALS: dict[str, dict[str, Any]] = {}
 
 
+def _canonical_symbol(raw: str) -> str:
+    """Map broker-specific MT5 symbols to canonical strategy symbols."""
+    symbol = str(raw or "").strip().upper()
+    if "XAU" in symbol:
+        return "XAUUSD"
+    if "BTC" in symbol:
+        return "BTCUSD"
+    return symbol
+
+
 def _iso_age_seconds(iso_ts: str | None) -> float:
     if not iso_ts:
         return 1e9
@@ -226,7 +236,7 @@ def healthz() -> dict[str, Any]:
 
 
 @app.get("/signal")
-def get_signal(symbol: str = Query(..., min_length=3, max_length=12)) -> JSONResponse:
+def get_signal(symbol: str = Query(..., min_length=3, max_length=32)) -> JSONResponse:
     """Unified signals array — returns one entry per leg (control + treatment).
 
     Backward-compat: flat top-level fields mirror the control-leg (suffix="")
@@ -234,7 +244,7 @@ def get_signal(symbol: str = Query(..., min_length=3, max_length=12)) -> JSONRes
     function during staged rollout.  New EAs iterate the ``signals`` array
     and send orders with signal["magic"].
     """
-    sym = symbol.upper()
+    sym = _canonical_symbol(symbol)
     if sym not in SYMBOL_WHITELIST:
         raise HTTPException(400, f"symbol must be one of {sorted(SYMBOL_WHITELIST)}")
 
@@ -305,7 +315,7 @@ def post_test_signal(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     The EA's production path (/signal) is unaffected; test signals are only
     retrievable via GET /test/signal?symbol=...
     """
-    sym = str(payload.get("symbol", "")).upper()
+    sym = _canonical_symbol(str(payload.get("symbol", "")))
     if sym not in SYMBOL_WHITELIST:
         raise HTTPException(400, f"symbol must be one of {sorted(SYMBOL_WHITELIST)}")
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -321,9 +331,9 @@ def post_test_signal(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 
 
 @app.get("/test/signal")
-def get_test_signal(symbol: str = Query(..., min_length=3, max_length=12)) -> JSONResponse:
+def get_test_signal(symbol: str = Query(..., min_length=3, max_length=32)) -> JSONResponse:
     """Retrieve last injected test signal for the given symbol (in-memory only)."""
-    sym = symbol.upper()
+    sym = _canonical_symbol(symbol)
     if sym not in _TEST_SIGNALS:
         return JSONResponse({
             "symbol": sym,

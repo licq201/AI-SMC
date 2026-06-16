@@ -18,6 +18,30 @@ class TestAsianRangeQuota:
         later_same_day = datetime(2026, 4, 17, 7, 45, tzinfo=timezone.utc)
         assert q2.is_exhausted_today(later_same_day)
 
+    def test_three_trade_limit_not_exhausted_after_one_open(self, tmp_path):
+        q = AsianRangeQuota()
+        now = datetime(2026, 4, 17, 6, 30, tzinfo=timezone.utc)
+
+        q2 = q.record_open(now, state_path=tmp_path / "quota.json", daily_limit=3)
+
+        assert q2.opens_count == 1
+        assert q2.daily_limit == 3
+        assert not q2.is_exhausted_today(now)
+
+    def test_three_trade_limit_exhausts_on_third_open(self, tmp_path):
+        path = tmp_path / "quota.json"
+        now = datetime(2026, 4, 17, 6, 30, tzinfo=timezone.utc)
+
+        q = AsianRangeQuota()
+        q = q.record_open(now, state_path=path, daily_limit=3)
+        q = q.record_open(now, state_path=path, daily_limit=3)
+        assert not q.is_exhausted_today(now)
+
+        q = q.record_open(now, state_path=path, daily_limit=3)
+
+        assert q.opens_count == 3
+        assert q.is_exhausted_today(now)
+
     def test_next_day_resets(self, tmp_path):
         q = AsianRangeQuota()
         now = datetime(2026, 4, 17, 23, 59, tzinfo=timezone.utc)
@@ -71,12 +95,28 @@ class TestAsianRangeQuotaPersistence:
         assert path.exists()
         raw = json.loads(path.read_text())
         assert raw["last_open_date"] == "2026-04-17"
+        assert raw["opens_count"] == 1
+        assert raw["daily_limit"] == 1
 
         # Simulate process restart: fresh load from disk
         q3 = AsianRangeQuota.load(state_path=path)
         assert q3.last_open_date == date(2026, 4, 17)
+        assert q3.opens_count == 1
         # And still exhausted for today's UTC date
         assert q3.is_exhausted_today(
+            datetime(2026, 4, 17, 23, 0, tzinfo=timezone.utc)
+        )
+
+    def test_load_legacy_last_open_date_counts_as_one_open(self, tmp_path):
+        path = tmp_path / "legacy_quota.json"
+        path.write_text(json.dumps({"last_open_date": "2026-04-17"}))
+
+        q = AsianRangeQuota.load(state_path=path, daily_limit=3)
+
+        assert q.last_open_date == date(2026, 4, 17)
+        assert q.opens_count == 1
+        assert q.daily_limit == 3
+        assert not q.is_exhausted_today(
             datetime(2026, 4, 17, 23, 0, tzinfo=timezone.utc)
         )
 

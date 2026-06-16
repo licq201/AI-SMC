@@ -469,9 +469,29 @@ int ResolveDefaultMagic()
 }
 
 
+string UrlEncodeAscii(const string value)
+{
+   string encoded = "";
+   int n = StringLen(value);
+   for (int i = 0; i < n; i++)
+   {
+      ushort ch = StringGetCharacter(value, i);
+      bool safe = ((ch >= 48 && ch <= 57)   // 0-9
+                   || (ch >= 65 && ch <= 90)  // A-Z
+                   || (ch >= 97 && ch <= 122) // a-z
+                   || ch == 45 || ch == 46 || ch == 95 || ch == 126);
+      if (safe)
+         encoded += ShortToString(ch);
+      else
+         encoded += StringFormat("%%%02X", (int)ch);
+   }
+   return encoded;
+}
+
+
 void PollAndExecute()
 {
-   string url = SignalURL + "?symbol=" + _Symbol;
+   string url = SignalURL + "?symbol=" + UrlEncodeAscii(_Symbol);
    char   post[];
    char   result[];
    string headers = "";

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import logging
 import sys
 from pathlib import Path
@@ -95,6 +96,32 @@ class TestSymbolDataRoot:
         assert "BOGUS_SYM" in caplog.text
 
 
+class TestMt5SymbolRouting:
+    def test_xauusd_uses_env_broker_symbol_override(self, monkeypatch) -> None:
+        monkeypatch.setenv("SMC_MT5_SYMBOL", "XAUUSD+")
+        from smc.config import SMCConfig
+
+        cfg = SMCConfig(_env_file=None, instrument="XAUUSD")
+
+        assert _srv._mt5_symbol_for("XAUUSD", cfg) == "XAUUSD+"
+
+    def test_btcusd_keeps_registry_mt5_path_without_override(self, monkeypatch) -> None:
+        monkeypatch.delenv("SMC_MT5_SYMBOL", raising=False)
+        from smc.config import SMCConfig
+
+        cfg = SMCConfig(_env_file=None)
+
+        assert _srv._mt5_symbol_for("BTCUSD", cfg) == "Bitcoin\\BTCUSD"
+
+    def test_dashboard_sets_polars_cpu_check_skip(self) -> None:
+        assert os.environ.get("POLARS_SKIP_CPU_CHECK") == "1"
+
+    def test_dashboard_source_reconfigures_stdio_utf8(self) -> None:
+        text = _SERVER_PATH.read_text(encoding="utf-8")
+
+        assert "stream.reconfigure(encoding=\"utf-8\"" in text
+
+
 # ---------------------------------------------------------------------------
 # /api/state endpoint
 # ---------------------------------------------------------------------------
@@ -136,6 +163,37 @@ class TestGetState:
             r = client.get("/api/state?symbol=XAUUSD")
         assert r.status_code == 200
         assert r.json()["state"] is None
+
+
+# ---------------------------------------------------------------------------
+# /signal compatibility endpoint
+# ---------------------------------------------------------------------------
+
+class TestSignalCompatibility:
+    def test_signal_endpoint_accepts_broker_suffixed_xauusd(self, tmp_path: Path) -> None:
+        """EA misconfigured to dashboard port 8765 should not receive 404."""
+        xau_dir = tmp_path / "XAUUSD"
+        _make_state_file(xau_dir, {
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "cycle": 77,
+            "action": "BUY",
+            "trading_mode": "trending",
+            "best_setup": {
+                "direction": "long",
+                "entry": 2350.0,
+                "sl": 2348.0,
+                "tp1": 2354.0,
+                "position_size_lots": 0.3,
+                "confluence": 0.7,
+            },
+        })
+        with patch.object(_srv, "DATA", tmp_path):
+            client = TestClient(_srv.app)
+            r = client.get("/signal?symbol=XAUUSD%2B")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["symbol"] == "XAUUSD"
+        assert body["signals"][0]["action"] == "BUY"
 
 
 # ---------------------------------------------------------------------------

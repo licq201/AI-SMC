@@ -302,6 +302,14 @@ def _build_guards_snapshot(
     consec_tripped_today = _is_tripped_on(consec, "tripped", "tripped_at", target_date)
     phase1a_tripped_today = _is_tripped_on(phase1a, "tripped", "tripped_at", target_date)
 
+    quota_last_open = quota.get("last_open_date")
+    quota_limit = _coerce_int(quota.get("daily_limit"), default=1)
+    quota_opens = _coerce_int(quota.get("opens_count"), default=0)
+    if quota_last_open and "opens_count" not in quota:
+        quota_opens = 1
+    if quota_last_open != target_date.isoformat():
+        quota_opens = 0
+
     snapshot = {
         "consec_loss": {
             "tripped": bool(consec.get("tripped", False)),
@@ -317,8 +325,11 @@ def _build_guards_snapshot(
             "last_reset_date": phase1a.get("last_reset_date"),
         },
         "asian_quota": {
-            "last_open_date": quota.get("last_open_date"),
-            "exhausted_today": quota.get("last_open_date") == target_date.isoformat(),
+            "last_open_date": quota_last_open,
+            "exhausted_today": quota_opens >= quota_limit,
+            "opens_count": quota_opens,
+            "daily_limit": quota_limit,
+            "remaining": max(0, quota_limit - quota_opens),
         },
         # DrawdownGuard is not persisted — digest leaves this null and relies
         # on structured.jsonl replay for running daily_pnl instead.
@@ -417,6 +428,13 @@ def _coerce_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_int(value: Any, *, default: int) -> int:
+    try:
+        return max(1 if default >= 1 else 0, int(value))
+    except (TypeError, ValueError):
+        return default
 
 
 def _round_or_none(value: float | None) -> float | None:

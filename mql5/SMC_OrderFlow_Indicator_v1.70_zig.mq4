@@ -135,7 +135,7 @@ extern bool   EnableExtremeProtection = true;  // 启用极点保护机制
 extern bool   DebugExtremePoints      = false; // 调试极点识别日志
 
 // --- J. V1.54 临时极点追踪参数 ---
-extern bool   ShowTemporaryExtreme    = true;        // 显示临时极点（未确认的最新高/低点）
+extern bool   ShowTemporaryExtreme    = false;        // 显示临时极点（未确认的最新高/低点）
 extern color  TempExtremeHigh_Color   = clrAqua;     // 临时高点颜色
 extern color  TempExtremeLow_Color    = clrMagenta;  // 临时低点颜色
 extern int    TempExtremeArrowSize    = 2;           // 临时极点箭头大小

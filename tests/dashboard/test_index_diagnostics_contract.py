@@ -19,3 +19,21 @@ def test_raw_diagnostic_includes_smc_diagnostic_fallback() -> None:
 
     assert "this.state?.smc_diagnostic" in html
     assert "range_diagnostic" in html
+
+
+def test_today_trades_surface_strategy_and_reason_columns() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert "策略" in html
+    assert "依据 / 状态" in html
+    assert "strategyLabel(t)" in html
+    assert "tradeReasonLabel(t)" in html
+
+
+def test_account_header_is_loaded_from_server() -> None:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'fetch("/api/account")' in html
+    assert "accountTitle" in html
+    assert "东方6# AI-SMC" not in html
+    assert "DooTechnology-563549" not in html

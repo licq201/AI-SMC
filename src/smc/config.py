@@ -145,6 +145,13 @@ class SMCConfig(BaseSettings):
         default="",
         description="Absolute path to terminal64.exe. Useful if IPC timeout occurs.",
     )
+    mt5_symbol: str = Field(
+        default="",
+        description=(
+            "Broker-specific MT5 symbol for the primary instrument, e.g. XAUUSD+. "
+            "Keeps internal strategy/data routing on canonical XAUUSD."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Trading
@@ -650,6 +657,14 @@ class SMCConfig(BaseSettings):
         and server values.
         """
         return bool(self.mt5_login >= 0 and self.mt5_password.get_secret_value() and self.mt5_server)
+
+    def broker_symbol_for(self, symbol: str, default_symbol: str | None = None) -> str:
+        """Return the MT5 broker symbol to use for a canonical strategy symbol."""
+        canonical = str(symbol or "").upper()
+        primary = str(self.instrument or "").upper()
+        if self.mt5_symbol and canonical == primary:
+            return self.mt5_symbol
+        return default_symbol or symbol
 
     def has_llm(self) -> bool:
         """Return True if an Anthropic API key is configured."""

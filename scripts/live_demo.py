@@ -23,6 +23,10 @@ import shutil
 
 os.environ["PYTHONUTF8"] = "1"
 os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ.setdefault("POLARS_SKIP_CPU_CHECK", "1")
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # Round 4.6-L: single-instance guard (VPS found 2 live_demo.py processes running
@@ -184,6 +188,63 @@ STATE_PATH: Path = Path("data/live_state.json")              # overwritten in ma
 AI_PATH: Path = Path("data/ai_analysis.json")                # overwritten in main
 PAUSE_FLAG_PATH: Path = Path("data/trading_paused.flag")     # overwritten in main
 MT5_POSITIONS_PATH: Path = Path("data/mt5_positions.json")   # overwritten in main
+USER_CONFIG_PATH: Path = Path("data/user_config.json")       # overwritten in main
+
+
+def _load_user_config(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _asian_daily_quota_from_config(user_config: dict, default: int = 1) -> int:
+    risk = user_config.get("risk") if isinstance(user_config, dict) else None
+    raw = risk.get("asian_daily_quota") if isinstance(risk, dict) else default
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return max(1, int(default))
+
+
+def _strategy_audit_fields(action: str, mode_decision=None) -> dict[str, str]:
+    mode_name = getattr(mode_decision, "mode", "")
+    if action.startswith("RANGE") or mode_name == "ranging":
+        return {
+            "strategy_family": "mean_reversion",
+            "strategy_label": "均值回归",
+        }
+    return {
+        "strategy_family": "smc",
+        "strategy_label": "SMC规则",
+    }
+
+
+def _execution_status(
+    *,
+    blocked_reason: str | None = None,
+    mt5_mode_tag: str | None = None,
+    execution_path: str | None = None,
+    paper_mode: bool = False,
+) -> str:
+    if blocked_reason:
+        return "blocked"
+    if paper_mode:
+        return "paper_only"
+    if mt5_mode_tag == "LIVE_EXEC":
+        return "mt5_sent"
+    if mt5_mode_tag and mt5_mode_tag.startswith("MT5_FAIL"):
+        return "mt5_failed"
+    if execution_path == "ea":
+        return "signal_published_ea"
+    return "recorded"
+
+
+def _append_jsonl(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
 def _migrate_legacy_xau_paths(symbol: str) -> None:
@@ -455,7 +516,8 @@ def determine_action(setups, ai_analysis, regime, *,
                      htf_bias=None, cfg=None, m15_df=None, d1_df=None,
                      ai_regime_assessment=None,
                      ai_mode_router_enabled: bool = False,
-                     ai_regime_trust_threshold: float = 0.6):
+                     ai_regime_trust_threshold: float = 0.6,
+                     asian_daily_quota: int = 1):
     """Dual-mode action router: trending (v1 5-gate) or ranging (mean-reversion).
 
     Always detects range for display. Mode router decides which path runs.
@@ -528,8 +590,19 @@ def determine_action(setups, ai_analysis, regime, *,
         if session in _ASIAN_SESSIONS and asian_range_quota is not None:
             if phase1a_breaker is not None and phase1a_breaker.is_tripped():
                 return "HOLD", f"[ASIAN_BREAKER_TRIPPED] Asian ranging disabled | {session}", None, mode
-            if asian_range_quota.is_exhausted_today(datetime.now(tz=timezone.utc)):
-                return "HOLD", f"[COOLDOWN] Asian ranging already used today | {session}", None, mode
+            if asian_range_quota.is_exhausted_today(
+                datetime.now(tz=timezone.utc),
+                daily_limit=asian_daily_quota,
+            ):
+                return (
+                    "HOLD",
+                    (
+                        f"[COOLDOWN] Asian ranging quota used "
+                        f"({asian_range_quota.opens_count}/{asian_daily_quota}) | {session}"
+                    ),
+                    None,
+                    mode,
+                )
         action, reason, best = _determine_ranging(
             price, mode.range_bounds, h1_snapshot, m15_snapshot, h1_atr,
             range_trader, breakout_detector, session=session, h1_df=h1_df,
@@ -798,7 +871,7 @@ def main():
     # Per-symbol data paths — must be assigned before any helper that
     # references the module-level path vars (fetch_mt5_data, save_state, …).
     # -----------------------------------------------------------------------
-    global JOURNAL_PATH, STATE_PATH, AI_PATH, PAUSE_FLAG_PATH, MT5_POSITIONS_PATH
+    global JOURNAL_PATH, STATE_PATH, AI_PATH, PAUSE_FLAG_PATH, MT5_POSITIONS_PATH, USER_CONFIG_PATH
     DATA_ROOT = Path("data") / SYMBOL
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -814,6 +887,7 @@ def main():
     # Treatment (suffix="_macro") → cfg.macro_magic (default 19760428).
     # Same TMGM Demo account; different magic lets broker reconcile split legs.
     _effective_magic: int = _path_cfg.magic_for(cfg.magic, _journal_suffix)
+    _mt5_symbol: str = _path_cfg.broker_symbol_for(SYMBOL, cfg.mt5_path)
 
     _journal_dir = DATA_ROOT / f"journal{_journal_suffix}"
     _journal_dir.mkdir(parents=True, exist_ok=True)
@@ -824,6 +898,7 @@ def main():
     # leg can be paused independently via the dashboard kill switch.
     PAUSE_FLAG_PATH = DATA_ROOT / f"trading_paused{_journal_suffix}.flag"
     MT5_POSITIONS_PATH = DATA_ROOT / f"mt5_positions{_journal_suffix}.json"
+    USER_CONFIG_PATH = DATA_ROOT / "user_config.json"
     # audit-r4 v5 Option B: per-suffix risk state files so control + treatment
     # legs track halt / quota / breaker independently on the same TMGM Demo
     # account.  Control (suffix="") writes to <name>.json; treatment
@@ -843,6 +918,7 @@ def main():
     print("=" * 60)
     print(f"  Mode:       {'PAPER (no real orders)' if PAPER_MODE else 'LIVE'}")
     print(f"  Instrument: {SYMBOL}")
+    print(f"  MT5 symbol: {_mt5_symbol}")
     print("  AI:         Claude Debate + SMA Fallback")
     print("  Strategy:   DUAL-MODE (trending v1 + ranging)")
     print(f"  Data root:  {DATA_ROOT}")
@@ -962,7 +1038,12 @@ def main():
     # cfg.use_asian_quota=False (BTC) → quota object still created but
     # is_exhausted_today() always returns False because record_open never fires
     # (guarded by session in _ASIAN_SESSIONS, which is empty for BTC).
-    asian_range_quota = AsianRangeQuota.load(state_path=ASIAN_QUOTA_PATH)
+    _user_config_startup = _load_user_config(USER_CONFIG_PATH)
+    _asian_daily_quota = _asian_daily_quota_from_config(_user_config_startup)
+    asian_range_quota = AsianRangeQuota.load(
+        state_path=ASIAN_QUOTA_PATH,
+        daily_limit=_asian_daily_quota,
+    )
     # Round 5 T3 (dual-symbol-audit P0): per-symbol breaker state file so
     # XAU and BTC processes don't clobber each other's Phase 1a state.
     # audit-r4 v5 Option B: also per-suffix so control and treatment don't
@@ -1011,7 +1092,7 @@ def main():
             print(f"[{now.strftime('%H:%M:%S')} UTC] Cycle {cycle}: next M15 at {nxt.strftime('%H:%M')} ({wait:.0f}s)")
             try:
                 waiting_price = None
-                tick = mt5.symbol_info_tick(cfg.mt5_path)
+                tick = mt5.symbol_info_tick(_mt5_symbol)
                 if tick is not None:
                     waiting_price = float(tick.bid)
                     
@@ -1192,7 +1273,7 @@ def main():
 
         try:
             # 1. Price
-            tick = mt5.symbol_info_tick(cfg.mt5_path)
+            tick = mt5.symbol_info_tick(_mt5_symbol)
             tick_ok = tick is not None
             # Round 5 stability R1: feed tick outcome into the watchdog so
             # consecutive tick_none streaks trigger handle reinit and, after
@@ -1226,7 +1307,7 @@ def main():
             print(f"  {SYMBOL}: ${price:.2f} (点差 ${spread:.2f})")
 
             # 2. Fetch data
-            data = fetch_mt5_data(cfg.mt5_path)
+            data = fetch_mt5_data(_mt5_symbol)
             bars_info = ", ".join(f"{k}: {len(v)}" for k, v in data.items())
             print(f"  K线数据: {{{bars_info}}}")
 
@@ -1357,6 +1438,8 @@ def main():
 
             # 6. Dual-mode action routing
             session, _ = get_session_info(cfg=cfg)
+            _user_config_cycle = _load_user_config(USER_CONFIG_PATH)
+            _asian_daily_quota = _asian_daily_quota_from_config(_user_config_cycle)
             action, reason, best, mode = determine_action(
                 setups, ai_analysis, regime,
                 h1_df=h1_df,
@@ -1375,6 +1458,7 @@ def main():
                 ai_regime_assessment=getattr(aggregator, "_last_ai_assessment", None),
                 ai_mode_router_enabled=(_ai_runtime_enabled and _path_cfg.ai_mode_router_enabled),
                 ai_regime_trust_threshold=_path_cfg.ai_regime_trust_threshold,
+                asian_daily_quota=_asian_daily_quota,
             )
             # Round 5 T0 (P0-2b): quota record_open moved *after* successful
             # order_send below (inside LIVE_EXEC branch). MT5 failures no longer
@@ -1382,6 +1466,30 @@ def main():
             # TODO: When paper/live trade-close tracking is implemented, call
             # phase1a_breaker.record_trade_close(pnl_usd) after each
             # ASIAN_LONDON_TRANSITION ranging trade closes.
+            if action == "HOLD" and (
+                reason.startswith("[COOLDOWN]") or reason.startswith("[ASIAN_BREAKER_TRIPPED]")
+            ):
+                _blocked_fields = _strategy_audit_fields(action, mode)
+                _append_jsonl(
+                    JOURNAL_PATH,
+                    {
+                        "time": now.isoformat(),
+                        "cycle": cycle,
+                        "price": price,
+                        "event": "order_blocked",
+                        "action": "HOLD",
+                        "reason": reason,
+                        "decision_reason": reason,
+                        "blocked_reason": reason,
+                        "execution_status": _execution_status(blocked_reason=reason),
+                        "trading_mode": mode.mode,
+                        "session": session,
+                        "regime": regime,
+                        "ai_direction": ai_analysis.get("ai_direction", ai_analysis.get("direction", "?")),
+                        "entry_reason": f"{_blocked_fields['strategy_label']}被阻止：{reason}",
+                        **_blocked_fields,
+                    },
+                )
 
             # Round 5 T5 audit r1 (P0-risk): Pre-write risk gate for EA architecture.
             # In EA mode Python does NOT call order_send, so margin_cap and
@@ -1438,7 +1546,7 @@ def main():
             if best is not None:
                 # Gate 1: margin_cap — requires live MT5 account_info
                 try:
-                    _gate_tick = mt5.symbol_info_tick(cfg.mt5_path)
+                    _gate_tick = mt5.symbol_info_tick(_mt5_symbol)
                     _gate_price = (
                         float(getattr(_gate_tick, "ask" if getattr(best, "direction", "long") == "long" else "bid", price))
                         if _gate_tick is not None
@@ -1457,7 +1565,7 @@ def main():
                     _gate_lots = planned_lots if planned_lots > 0 else cfg.min_lot
                     _margin_result = check_margin_cap(
                         mt5,
-                        symbol=cfg.mt5_path,
+                        symbol=_mt5_symbol,
                         action=_gate_order_type,
                         volume=_gate_lots,
                         price=_gate_price,
@@ -1471,8 +1579,14 @@ def main():
                 # Gate 2: asian_range_quota — only during Asian sessions
                 if not blocked_reason and session in _ASIAN_SESSIONS:
                     try:
-                        if asian_range_quota.is_exhausted_today(datetime.now(tz=timezone.utc)):
-                            blocked_reason = "asian_quota:exhausted_today"
+                        if asian_range_quota.is_exhausted_today(
+                            datetime.now(tz=timezone.utc),
+                            daily_limit=_asian_daily_quota,
+                        ):
+                            blocked_reason = (
+                                f"asian_quota:exhausted_today "
+                                f"used={asian_range_quota.opens_count}/{_asian_daily_quota}"
+                            )
                     except Exception as _quota_exc:
                         log_warn("pre_write_quota_error", exc=str(_quota_exc)[:120])
 
@@ -1482,7 +1596,7 @@ def main():
                 if not blocked_reason:
                     try:
                         from smc.risk.concurrent_gates import check_concurrent_cap
-                        _open_positions = mt5.positions_get(symbol=cfg.mt5_path) or []
+                        _open_positions = mt5.positions_get(symbol=_mt5_symbol) or []
                         _cap_result = check_concurrent_cap(
                             _open_positions,
                             magic=_effective_magic,
@@ -1506,7 +1620,7 @@ def main():
                         _recent_deals = mt5.history_deals_get(_lookback, _now_ts) or []
                         _stack_result = check_anti_stack_cooldown(
                             _recent_deals,
-                            symbol=cfg.mt5_path,
+                            symbol=_mt5_symbol,
                             magic=_effective_magic,
                             direction=_want_dir or "",
                             now=_now_ts,
@@ -1518,6 +1632,39 @@ def main():
                         log_warn("pre_write_anti_stack_error", exc=str(_stack_exc)[:120])
 
             if blocked_reason:
+                _blocked_intended_action = action
+                _blocked_best = best
+                _blocked_fields = _strategy_audit_fields(_blocked_intended_action, mode)
+                _blocked_direction = getattr(_blocked_best, "direction", None)
+                if _blocked_direction is None and hasattr(_blocked_best, "entry_signal"):
+                    _blocked_direction = getattr(_blocked_best.entry_signal, "direction", None)
+                _append_jsonl(
+                    JOURNAL_PATH,
+                    {
+                        "time": now.isoformat(),
+                        "cycle": cycle,
+                        "price": price,
+                        "event": "order_blocked",
+                        "action": "HOLD",
+                        "intended_action": _blocked_intended_action,
+                        "direction": _blocked_direction,
+                        "reason": f"[PRE_WRITE_GATE] {blocked_reason}",
+                        "decision_reason": reason,
+                        "blocked_reason": blocked_reason,
+                        "execution_status": _execution_status(blocked_reason=blocked_reason),
+                        "trading_mode": mode.mode,
+                        "session": session,
+                        "regime": regime,
+                        "ai_direction": ai_analysis.get("ai_direction", ai_analysis.get("direction", "?")),
+                        "htf_bias_conf": round(float(getattr(htf_bias, "confidence", 0.0) or 0.0), 3),
+                        "htf_bias_tier": htf_bias_tier(float(getattr(htf_bias, "confidence", 0.0) or 0.0)),
+                        "entry_reason": (
+                            f"{_blocked_fields['strategy_label']}候选被风控拦截：{blocked_reason}；"
+                            f"原始决策：{reason}"
+                        ),
+                        **_blocked_fields,
+                    },
+                )
                 action = "HOLD"
                 reason = f"[PRE_WRITE_GATE] {blocked_reason}"
                 best = None
@@ -1550,6 +1697,7 @@ def main():
             #    Round 4.6-H1: range ENTER 也要写 journal. 原代码只遍历 trending
             #    `setups` (TradeSetup tuple) 通过 s.entry_signal 取字段, 但 range
             #    path 的 `best` 是 RangeSetup 不在 setups 里 → journal 漏记.
+            _execution_path = "paper" if PAPER_MODE else "ea"
             if action.startswith("RANGE") and best is not None:
                 # Round 4.6-X (USER CRITICAL CATCH): MT5 order_send execution layer.
                 # 之前 Lead 严重失职 — journal 只写 "PAPER" 日志, 没 call MT5 API.
@@ -1637,9 +1785,9 @@ def main():
                 # opens a persistent circuit flag after 3 consecutive REQUOTE/EXC.
                 _mt5_send_attempts = 0
                 if _mt5_execute:
-                    dyn_deviation = compute_dynamic_deviation(mt5, cfg.mt5_path, fallback=100)
+                    dyn_deviation = compute_dynamic_deviation(mt5, _mt5_symbol, fallback=100)
                     order_type = mt5.ORDER_TYPE_BUY if best.direction == "long" else mt5.ORDER_TYPE_SELL
-                    tick_for_margin = mt5.symbol_info_tick(cfg.mt5_path)
+                    tick_for_margin = mt5.symbol_info_tick(_mt5_symbol)
                     margin_price = (
                         float(getattr(tick_for_margin, "ask" if best.direction == "long" else "bid", best.entry_price))
                         if tick_for_margin is not None
@@ -1650,7 +1798,7 @@ def main():
                     # equity — prevents dual-symbol XAU+BTC from blowing the $1000 demo.
                     margin_check = check_margin_cap(
                         mt5,
-                        symbol=cfg.mt5_path,
+                        symbol=_mt5_symbol,
                         action=order_type,
                         volume=position_size_lots,
                         price=margin_price,
@@ -1675,6 +1823,7 @@ def main():
                             "time": now.isoformat(),
                             "cycle": cycle,
                             "price": price,
+                            "event": "order_blocked",
                             "action": action,
                             "direction": best.direction,
                             "entry": best.entry_price,
@@ -1682,6 +1831,16 @@ def main():
                             "tp1": best.take_profit,
                             "trigger": best.trigger,
                             "mode": "MARGIN_GATED",
+                            "reason": f"[MARGIN_GATED] {margin_check.reason}",
+                            "decision_reason": reason,
+                            "blocked_reason": f"margin_cap:{margin_check.reason}",
+                            "execution_status": _execution_status(blocked_reason=margin_check.reason),
+                            "entry_reason": (
+                                f"均值回归候选被保证金风控拦截：{margin_check.reason}；"
+                                f"区间 {best.range_bounds.lower:.2f}-{best.range_bounds.upper:.2f}，"
+                                f"触发 {best.trigger}"
+                            ),
+                            **_strategy_audit_fields(action, mode),
                             # Round 6 B3: intent was EA execution; gate blocked it.
                             "execution_path": _execution_path,
                             "margin_gated": True,
@@ -1696,7 +1855,7 @@ def main():
                         _margin_gated = True
                     request = {
                         "action": mt5.TRADE_ACTION_DEAL,
-                        "symbol": cfg.mt5_path,
+                        "symbol": _mt5_symbol,
                         "volume": position_size_lots,
                         "type": order_type,
                         "price": 0.0,  # refreshed per attempt inside send_with_retry
@@ -1775,6 +1934,7 @@ def main():
                     asian_range_quota = asian_range_quota.record_open(
                         datetime.now(tz=timezone.utc),
                         state_path=ASIAN_QUOTA_PATH,
+                        daily_limit=_asian_daily_quota,
                     )
 
                 if not _margin_gated:
@@ -1782,6 +1942,7 @@ def main():
                         "time": now.isoformat(),
                         "cycle": cycle,
                         "price": price,
+                        "event": "order_signal",
                         "action": action,
                         "direction": best.direction,
                         "entry": best.entry_price,
@@ -1800,6 +1961,20 @@ def main():
                         "regime": regime,
                         "ai_direction": ai_analysis.get("ai_direction", ai_analysis.get("direction", "?")),
                         "mode": _mt5_mode_tag,  # 4.6-X: PAPER / LIVE_EXEC / MT5_FAIL_xxx
+                        "reason": reason,
+                        "decision_reason": reason,
+                        "blocked_reason": None,
+                        "execution_status": _execution_status(
+                            mt5_mode_tag=_mt5_mode_tag,
+                            execution_path=_execution_path,
+                            paper_mode=PAPER_MODE,
+                        ),
+                        "entry_reason": (
+                            f"均值回归开仓：{best.trigger}；价格 {best.entry_price:.2f} "
+                            f"在区间 {best.range_bounds.lower:.2f}-{best.range_bounds.upper:.2f} 内靠近边界，"
+                            f"目标先看中点 {best.take_profit:.2f}，扩展目标 {best.take_profit_ext:.2f}。"
+                        ),
+                        **_strategy_audit_fields(action, mode),
                         # Round 6 B3: Round 4 v5 EA-only architecture means
                         # "mode=PAPER" ≠ no execution — EA still fires. See
                         # docs/ARCHITECTURE.md "Journal semantics".
@@ -1859,6 +2034,7 @@ def main():
                         "time": now.isoformat(),
                         "cycle": cycle,
                         "price": price,
+                        "event": "order_signal",
                         "action": action,
                         "direction": e.direction,
                         "entry": e.entry_price,
@@ -1869,6 +2045,19 @@ def main():
                         "regime": regime,
                         "ai_direction": ai_analysis.get("ai_direction", ai_analysis.get("direction", "?")),
                         "mode": "PAPER",
+                        "reason": reason,
+                        "decision_reason": reason,
+                        "blocked_reason": None,
+                        "execution_status": _execution_status(
+                            mt5_mode_tag="PAPER",
+                            execution_path=_execution_path,
+                            paper_mode=PAPER_MODE,
+                        ),
+                        "entry_reason": (
+                            f"SMC规则开仓：HTF/H1/M15 多周期信号通过；触发 {e.trigger_type}；"
+                            f"共振分 {s.confluence_score:.2f}。"
+                        ),
+                        **_strategy_audit_fields(action, mode),
                         # Round 6 B3: EA executes the trending signal unless PAPER_MODE.
                         "execution_path": _execution_path,
                         "trading_mode": mode.mode,
@@ -1896,7 +2085,7 @@ def main():
             # records closed-trade P&L into the consec-loss halt + Phase1a
             # breaker + daily_pnl running total for DrawdownGuard backstop.
             try:
-                broker_positions = fetch_broker_positions(mt5, symbol=cfg.mt5_path, magic=_effective_magic)
+                broker_positions = fetch_broker_positions(mt5, symbol=_mt5_symbol, magic=_effective_magic)
                 atomic_write_json(
                     MT5_POSITIONS_PATH,
                     {

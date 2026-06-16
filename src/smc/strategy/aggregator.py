@@ -85,7 +85,7 @@ class MultiTimeframeAggregator:
         detector: SMCDetector,
         swing_length: int = 10,
         *,
-        enable_ob_test_trigger: bool = True,
+        enable_ob_test_trigger: bool = False,
         ai_regime_enabled: bool = False,
         regime_cache: "RegimeCacheLookup | None" = None,
         sl_fitness_enabled: bool = False,

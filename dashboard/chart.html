@@ -119,14 +119,18 @@ function pad2(n) {
 
 function formatChartTime(time, withDate = false) {
   const ts = typeof time === 'number' ? time : (time?.timestamp ?? 0);
-  const d = new Date((ts + MT5_SERVER_TIME_OFFSET_SEC) * 1000);
+  // MT5 rates["time"] is broker-server-time (UTC+3) encoded as fake-UTC epoch;
+  // reading UTC fields directly gives the correct broker-time display.
+  const d = new Date(ts * 1000);
   const hm = `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
   if (!withDate) return hm;
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${hm}`;
 }
 
 function formatMt5ServerNow() {
-  return formatChartTime(Math.floor(Date.now() / 1000), true);
+  // Date.now() is real UTC; add broker server offset to convert to MT5 server time.
+  const ts = Math.floor(Date.now() / 1000);
+  return formatChartTime(ts + MT5_SERVER_TIME_OFFSET_SEC, true);
 }
 
 // ─── Colors ───────────────────────────────────────────────────────────────

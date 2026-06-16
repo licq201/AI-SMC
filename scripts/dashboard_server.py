@@ -15,8 +15,19 @@ from __future__ import annotations
 
 import json
 import logging
+import importlib.util
+import os
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
+
+os.environ.setdefault("POLARS_SKIP_CPU_CHECK", "1")
+os.environ.setdefault("PYTHONUTF8", "1")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,15 +91,153 @@ def _freshness(state: dict | None) -> dict:
     return {"fresh": age <= STALE_THRESHOLD_SEC, "age_sec": int(age), "stale": age > STALE_THRESHOLD_SEC}
 
 
+def _load_strategy_server_module():
+    """Load scripts/strategy_server.py so dashboard:8765 can serve /signal."""
+    module_name = "_aismc_strategy_server_for_dashboard"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+
+    path = Path(__file__).resolve().parent / "strategy_server.py"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load strategy_server.py from {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _mt5_symbol_for(symbol: str, cfg: Any) -> str:
+    """Resolve canonical dashboard symbol to broker-specific MT5 symbol."""
+    from smc.instruments import get_instrument_config
+
+    try:
+        default_symbol = get_instrument_config(symbol).mt5_path
+    except KeyError:
+        default_symbol = symbol
+    if hasattr(cfg, "broker_symbol_for"):
+        return cfg.broker_symbol_for(symbol, default_symbol)
+    return default_symbol
+
+
+def _account_payload(login: Any, server: Any, balance: Any, *, source: str) -> dict[str, Any]:
+    login_value = int(login) if login not in (None, "") else None
+    server_value = str(server or "")
+    label = (
+        f"{server_value}-{login_value}"
+        if server_value and login_value is not None
+        else "MT5 account unavailable"
+    )
+    title = (
+        f"{server_value} #{login_value} AI-SMC"
+        if server_value and login_value is not None
+        else "AI-SMC"
+    )
+    return {
+        "login": login_value,
+        "server": server_value or None,
+        "balance": float(balance) if balance not in (None, "") else None,
+        "label": label,
+        "title": title,
+        "source": source,
+        "server_time": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _latest_startup_account_from_logs(log_root: Path) -> dict[str, Any] | None:
+    """Return latest system_startup account payload from structured logs."""
+    paths = sorted(log_root.glob("structured.jsonl*"), key=lambda p: p.stat().st_mtime)
+    for path in reversed(paths):
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            if "system_startup" not in line:
+                continue
+            try:
+                _, json_part = line.split("] ", 1)
+                row = json.loads(json_part)
+            except (ValueError, json.JSONDecodeError):
+                continue
+            if row.get("event") != "system_startup":
+                continue
+            return _account_payload(
+                row.get("account"),
+                row.get("server"),
+                row.get("balance"),
+                source="structured_log",
+            )
+    return None
+
+
+def _live_mt5_account_payload() -> dict[str, Any] | None:
+    """Read account_info from the current MT5 terminal when available."""
+    try:
+        import MetaTrader5 as mt5_mod  # type: ignore
+    except ImportError:
+        return None
+    if mt5_mod is None:
+        return None
+
+    from smc.config import SMCConfig
+
+    cfg = SMCConfig()
+    kwargs: dict[str, Any] = {"timeout": 10_000}
+    if cfg.mt5_login and cfg.mt5_login > 0:
+        kwargs["login"] = cfg.mt5_login
+        kwargs["password"] = cfg.mt5_password.get_secret_value()
+        kwargs["server"] = cfg.mt5_server
+    if cfg.mt5_path:
+        kwargs["path"] = cfg.mt5_path
+
+    if not mt5_mod.initialize(**kwargs):
+        return None
+    try:
+        info = mt5_mod.account_info()
+        if info is None:
+            return None
+        return _account_payload(
+            getattr(info, "login", None),
+            getattr(info, "server", None),
+            getattr(info, "balance", None),
+            source="mt5_live",
+        )
+    finally:
+        mt5_mod.shutdown()
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/signal")
+def get_signal_compat(symbol: str = Query(..., min_length=3, max_length=32)) -> JSONResponse:
+    """Compatibility path for EAs pointed at dashboard port 8765 by mistake."""
+    strategy_server = _load_strategy_server_module()
+    original_data_root = strategy_server.DATA_ROOT
+    strategy_server.DATA_ROOT = DATA
+    try:
+        return strategy_server.get_signal(symbol)
+    finally:
+        strategy_server.DATA_ROOT = original_data_root
+
 
 @app.get("/api/symbols")
 def list_symbols() -> JSONResponse:
     """Return all registered trading symbols."""
     from smc.instruments import SYMBOL_REGISTRY  # lazy import
     return JSONResponse({"symbols": sorted(SYMBOL_REGISTRY.keys())})
+
+
+@app.get("/api/account")
+def get_account() -> JSONResponse:
+    account = _live_mt5_account_payload()
+    if account is None:
+        account = _latest_startup_account_from_logs(ROOT / "logs")
+    if account is None:
+        account = _account_payload(None, None, None, source="unavailable")
+    return JSONResponse(account)
 
 
 @app.get("/api/state")
@@ -376,10 +525,14 @@ def _fetch_bars(symbol: str, tf_str: str, limit: int) -> "pl.DataFrame":
         )
 
     from smc.data.adapters.mt5_adapter import MT5Adapter
+    from smc.monitor.chart_feeds import MT5_SERVER_TIME_OFFSET
 
     tf_enum   = TF_MAP[tf_str]
     duration  = tf_bar_duration[tf_str]
-    end       = datetime.now(timezone.utc)
+    mt5_symbol = _mt5_symbol_for(symbol, cfg)
+    # MT5's copy_rates_range treats datetime args as broker server time (UTC+3),
+    # not UTC. Shift by the server offset so MT5 fetches the correct range.
+    end       = datetime.now(timezone.utc) + MT5_SERVER_TIME_OFFSET
     start     = end - duration * (limit + 60)
 
     try:
@@ -388,9 +541,9 @@ def _fetch_bars(symbol: str, tf_str: str, limit: int) -> "pl.DataFrame":
             password=cfg.mt5_password.get_secret_value(),
             server=cfg.mt5_server,
             path=cfg.mt5_path or None,
-            instrument=symbol,
+            instrument=mt5_symbol,
         ) as adapter:
-            df = adapter.fetch(instrument=symbol, timeframe=tf_enum, start=start, end=end)
+            df = adapter.fetch(instrument=mt5_symbol, timeframe=tf_enum, start=start, end=end)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"MT5 fetch failed: {exc}") from exc
 

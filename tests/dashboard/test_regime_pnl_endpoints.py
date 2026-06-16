@@ -84,6 +84,42 @@ def test_api_regime_empty_when_log_missing(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# /api/account
+# ---------------------------------------------------------------------------
+
+
+def test_api_account_falls_back_to_latest_startup_log(tmp_path: Path) -> None:
+    logs_dir = tmp_path / "logs"
+    _write_structured(logs_dir / "structured.jsonl", [
+        ("CRIT", {
+            "ts": "2026-06-02T12:00:00+00:00",
+            "event": "system_startup",
+            "account": 111,
+            "server": "OLD-Demo",
+            "balance": 1000.0,
+        }),
+        ("CRIT", {
+            "ts": "2026-06-02T12:07:21+00:00",
+            "event": "system_startup",
+            "account": 1610088387,
+            "server": "STARTRADERFinancial-Demo",
+            "balance": 24981.33,
+        }),
+    ])
+
+    with patch.object(_srv, "ROOT", tmp_path), \
+         patch.dict(sys.modules, {"MetaTrader5": None}):
+        client = TestClient(_srv.app)
+        r = client.get("/api/account")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["login"] == 1610088387
+    assert body["server"] == "STARTRADERFinancial-Demo"
+    assert body["label"] == "STARTRADERFinancial-Demo-1610088387"
+
+
+# ---------------------------------------------------------------------------
 # /api/pnl
 # ---------------------------------------------------------------------------
 

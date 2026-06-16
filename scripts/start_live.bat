@@ -9,6 +9,7 @@ REM 4.6-L PID file at data\live_demo.pid prevents duplicate instances.
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
+set POLARS_SKIP_CPU_CHECK=1
 REM Round 4.6-X (USER CATCH): enable real MT5 order_send (demo account safe).
 set SMC_MT5_EXECUTE=1
 REM Round 4 v5 Option B: explicit override to prevent inheriting user-level
@@ -23,8 +24,8 @@ set SMC_AI_DEBATE_ROUNDS=1
 REM Round 4 v5 (Tasks #51/52/53): post-2026-04-20 02:46 stacked-SL guardrails.
 REM max=1 enforces user's one-position-per-symbol hypothesis; 60min cooldown
 REM guarantees two stacked BUYs in a single session cannot repeat.
-set SMC_MAX_CONCURRENT_PER_SYMBOL=1
-set SMC_ANTI_STACK_COOLDOWN_MINUTES=60
-set SMC_RANGE_REVERSAL_CONFIRM_ENABLED=true
-cd /d E:\bossquant\MQ5\AI-SMC
+REM set SMC_MAX_CONCURRENT_PER_SYMBOL=1
+REM set SMC_ANTI_STACK_COOLDOWN_MINUTES=60
+REM set SMC_RANGE_REVERSAL_CONFIRM_ENABLED=true
+cd /d "%~dp0.."
 .venv\Scripts\python.exe scripts\live_demo.py >> logs\live_stdout.log 2>> logs\live_stderr.log

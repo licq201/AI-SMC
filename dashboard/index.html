@@ -50,7 +50,7 @@
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-indigo-500 flex items-center justify-center font-bold text-sm">A</div>
       <div>
-        <div class="text-sm font-semibold tracking-wide">东方6# AI-SMC</div>
+        <div class="text-sm font-semibold tracking-wide" x-text="accountTitle"></div>
         <div class="text-xs text-muted num" x-text="accountLabel"></div>
       </div>
     </div>
@@ -294,7 +294,7 @@
       </div>
       <div class="text-xs">
         <div class="text-muted">亚盘配额</div>
-        <div class="num font-medium" :class="digest?.guards_current?.asian_quota?.exhausted_today ? 'text-short' : 'text-long'" x-text="digest?.guards_current?.asian_quota?.exhausted_today ? '已用' : '可用'"></div>
+        <div class="num font-medium" :class="digest?.guards_current?.asian_quota?.exhausted_today ? 'text-short' : 'text-long'" x-text="quotaUsageLabel(digest?.guards_current?.asian_quota)"></div>
       </div>
       <div class="text-xs">
         <div class="text-muted">第一阶段断路器</div>
@@ -328,8 +328,8 @@
       </div>
       <div class="p-3 rounded-lg card-hi" :style="{ borderLeft: '3px solid ' + guardColor(guards?.asian_range_quota?.status) }">
         <div class="text-xs text-muted mb-1">亚盘配额</div>
-        <div class="num text-lg font-bold" :style="{ color: guardColor(guards?.asian_range_quota?.status) }" x-text="guards?.asian_range_quota?.exhausted ? '已用' : '可用'"></div>
-        <div class="text-xs text-muted mt-1" x-text="guards?.asian_range_quota?.last_open_date || '从未开过'"></div>
+        <div class="num text-lg font-bold" :style="{ color: guardColor(guards?.asian_range_quota?.status) }" x-text="quotaUsageLabel(guards?.asian_range_quota)"></div>
+        <div class="text-xs text-muted mt-1" x-text="quotaDetailLabel(guards?.asian_range_quota)"></div>
       </div>
       <div class="p-3 rounded-lg card-hi" :style="{ borderLeft: '3px solid ' + guardColor(guards?.drawdown_guard?.status) }">
         <div class="text-xs text-muted mb-1">回撤保护</div>
@@ -500,6 +500,8 @@
             <th class="py-2 pr-3 num text-right">止盈</th>
             <th class="py-2 pr-3 num text-right">风险回报</th>
             <th class="py-2 pr-3">AI 同意</th>
+            <th class="py-2 pr-3">策略</th>
+            <th class="py-2 pr-3">依据 / 状态</th>
             <th class="py-2 pr-3">来源</th>
             <th class="py-2 pr-3">模式</th>
           </tr>
@@ -514,6 +516,8 @@
               <td class="py-2.5 pr-3 num text-right text-muted" x-text="'$' + formatNum(t.tp1)"></td>
               <td class="py-2.5 pr-3 num text-right" :class="(t.rr_ratio||0) >= 1.2 ? 'text-long' : 'text-warn'" x-text="(t.rr_ratio||0).toFixed(2) + ' : 1'"></td>
               <td class="py-2.5 pr-3" x-text="aiAgreeLabel(t)"></td>
+              <td class="py-2.5 pr-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-700 text-text" x-text="strategyLabel(t)"></span></td>
+              <td class="py-2.5 pr-3 text-muted max-w-xs" x-text="tradeReasonLabel(t)"></td>
               <td class="py-2.5 pr-3 text-muted" x-text="translateTrigger(t.trigger)"></td>
               <td class="py-2.5 pr-3"><span class="px-2 py-0.5 rounded text-xs font-medium" :class="modeBadgeClass(t)" x-text="modeBadgeLabel(t)"></span></td>
             </tr>
@@ -535,7 +539,8 @@
             <span>止盈 $<span x-text="formatNum(t.tp1)"></span></span>
             <span :class="(t.rr_ratio||0) >= 1.2 ? 'text-long' : 'text-warn'" x-text="'盈亏比 ' + (t.rr_ratio||0).toFixed(2)"></span>
           </div>
-          <div class="mt-1 text-xs text-muted" x-text="aiAgreeLabel(t) + ' · ' + translateTrigger(t.trigger)"></div>
+          <div class="mt-1 text-xs text-muted" x-text="strategyLabel(t) + ' · ' + aiAgreeLabel(t) + ' · ' + translateTrigger(t.trigger)"></div>
+          <div class="mt-1 text-xs text-muted" x-text="tradeReasonLabel(t)"></div>
           <div class="mt-1"><span class="px-2 py-0.5 rounded text-xs font-medium" :class="modeBadgeClass(t)" x-text="modeBadgeLabel(t)"></span></div>
         </div>
       </template>
@@ -613,10 +618,10 @@
       <div>
         <div class="flex items-center justify-between mb-2">
           <label class="text-sm font-medium">亚盘时段每日最多开仓</label>
-          <span class="num text-accent" x-text="(config.risk?.asian_daily_quota ?? 2) + ' 笔'"></span>
+          <span class="num text-accent" x-text="(config.risk?.asian_daily_quota ?? 3) + ' 笔'"></span>
         </div>
         <input type="range" min="0" max="5" step="1"
-          :value="config.risk?.asian_daily_quota ?? 2"
+          :value="config.risk?.asian_daily_quota ?? 3"
           @input="setRisk('asian_daily_quota', parseInt($event.target.value, 10))"
           class="w-full accent-accent" />
         <div class="text-xs text-muted mt-1">亚盘（北京 8-16 点）一天最多几笔。0 = 禁止亚盘开仓。</div>
@@ -685,7 +690,7 @@
 </div>
 
 <footer class="text-center py-6 text-xs text-muted">
-  东方6# AI-SMC 盯盘台 · 每 5 秒自动刷新 · <a href="https://github.com/ChristopherCC-Liu" class="hover:text-text underline">项目主页</a>
+  AI-SMC 盯盘台 · 每 5 秒自动刷新 · <a href="https://github.com/ChristopherCC-Liu" class="hover:text-text underline">项目主页</a>
 </footer>
 
 <script>
@@ -712,7 +717,7 @@
   const AI_DIR_LABEL = { bullish: "看多", bearish: "看空", neutral: "中性", "?": "暂无" };
 
   const DEFAULT_CONFIG = {
-    risk: { boundary_band_pct: 0.30, min_rr_ratio: 1.2, asian_daily_quota: 2 },
+    risk: { boundary_band_pct: 0.30, min_rr_ratio: 1.2, asian_daily_quota: 3 },
     sessions: { asian_enabled: true, london_enabled: true, ny_enabled: true, ai_filter_neutral_block: true },
   };
 
@@ -756,15 +761,18 @@
       confirmKillSwitch: false,
       sessionToggles: sessionToggleDefs,
 
-      accountLabel: "DooTechnology-563549",
+      accountTitle: "AI-SMC",
+      accountLabel: "MT5 未连接",
 
       async start() {
         await this.fetchSymbols();
+        await this.fetchAccount();
         this.fetchAll();
         this.loadConfigFromServer();
         // Round 5 O1: regime on its own 30s timer (LLM-backed, slow to change).
         this.fetchRegime();
         setInterval(() => this.fetchAll(), 5000);
+        setInterval(() => this.fetchAccount(), 30000);
         setInterval(() => this.fetchRegime(), 30000);
       },
 
@@ -785,6 +793,17 @@
           if (r.ok) {
             const d = await r.json();
             this.availableSymbols = d.symbols || ["XAUUSD"];
+          }
+        } catch (e) { /* keep default */ }
+      },
+
+      async fetchAccount() {
+        try {
+          const r = await fetch("/api/account");
+          if (r.ok) {
+            const d = await r.json();
+            this.accountTitle = d.title || "AI-SMC";
+            this.accountLabel = d.label || "MT5 未连接";
           }
         } catch (e) { /* keep default */ }
       },
@@ -1364,11 +1383,11 @@
         return trig;
       },
       tradeDirLabel(t) {
-        const d = (t.direction || t.action || "").toUpperCase();
+        const d = (t.direction || t.intended_action || t.action || "").toUpperCase();
         return d.includes("BUY") ? "多" : d.includes("SELL") ? "空" : "—";
       },
       tradeDirStyle(t) {
-        const d = (t.direction || t.action || "").toUpperCase();
+        const d = (t.direction || t.intended_action || t.action || "").toUpperCase();
         if (d.includes("BUY")) return "background: rgba(16,185,129,0.18); color: #10B981;";
         if (d.includes("SELL")) return "background: rgba(239,68,68,0.18); color: #EF4444;";
         return "background: rgba(148,163,184,0.15); color: #94A3B8;";
@@ -1379,6 +1398,34 @@
         if (!dir || dir === "neutral") return "中性";
         const agree = (dir === "bullish" && tradeDir.includes("BUY")) || (dir === "bearish" && tradeDir.includes("SELL"));
         return agree ? "同意" : "分歧";
+      },
+      strategyLabel(t) {
+        if (t?.strategy_label) return t.strategy_label;
+        const family = String(t?.strategy_family || "").toLowerCase();
+        if (family === "mean_reversion") return "均值回归";
+        if (family === "smc") return "SMC规则";
+        const mode = String(t?.trading_mode || "").toLowerCase();
+        const action = String(t?.action || t?.intended_action || "").toUpperCase();
+        if (mode === "ranging" || action.startsWith("RANGE")) return "均值回归";
+        return "SMC规则";
+      },
+      tradeReasonLabel(t) {
+        if (t?.entry_reason) return t.entry_reason;
+        if (t?.blocked_reason) return "已阻断：" + t.blocked_reason;
+        if (t?.reason) return t.reason;
+        return this.translateTrigger(t?.trigger);
+      },
+      quotaUsageLabel(q) {
+        if (!q) return "—";
+        const used = Number(q.opens_count ?? (q.exhausted || q.exhausted_today ? 1 : 0));
+        const limit = Number(q.daily_limit ?? 1);
+        return `${used}/${limit}`;
+      },
+      quotaDetailLabel(q) {
+        if (!q) return "暂未采集";
+        const remaining = Number(q.remaining ?? 0);
+        const date = q.last_open_date || "今日未开";
+        return `${date} · 剩余 ${remaining} 笔`;
       },
     };
   }

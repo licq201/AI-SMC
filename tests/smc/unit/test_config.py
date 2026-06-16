@@ -143,6 +143,35 @@ class TestSMCConfigMT5Credentials:
         assert cfg.has_mt5_credentials() is True
 
 
+class TestSMCConfigBrokerSymbol:
+    """Broker-specific MT5 symbol override."""
+
+    def test_mt5_symbol_default_empty(self, monkeypatch) -> None:
+        monkeypatch.delenv("SMC_MT5_SYMBOL", raising=False)
+        from smc.config import SMCConfig
+
+        cfg = SMCConfig(_env_file=None)
+
+        assert cfg.mt5_symbol == ""
+        assert cfg.broker_symbol_for("XAUUSD", "XAUUSD") == "XAUUSD"
+
+    def test_mt5_symbol_env_overrides_primary_instrument(self, monkeypatch) -> None:
+        monkeypatch.setenv("SMC_MT5_SYMBOL", "XAUUSD+")
+        from smc.config import SMCConfig
+
+        cfg = SMCConfig(_env_file=None, instrument="XAUUSD")
+
+        assert cfg.broker_symbol_for("XAUUSD", "XAUUSD") == "XAUUSD+"
+
+    def test_mt5_symbol_does_not_override_other_symbols(self, monkeypatch) -> None:
+        monkeypatch.setenv("SMC_MT5_SYMBOL", "XAUUSD+")
+        from smc.config import SMCConfig
+
+        cfg = SMCConfig(_env_file=None, instrument="XAUUSD")
+
+        assert cfg.broker_symbol_for("BTCUSD", "Bitcoin\\BTCUSD") == "Bitcoin\\BTCUSD"
+
+
 class TestSMCConfigVirtualBalanceSplit:
     """audit-r4 v5 Option B: virtual_balance_split for dual-magic sizing."""
 

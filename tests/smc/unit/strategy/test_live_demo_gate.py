@@ -256,6 +256,30 @@ class TestAsianRangeQuotaGate:
         assert out_best is best
         assert blocked_reason is None
 
+    def test_quota_one_of_three_used_in_asian_session_does_not_block(self) -> None:
+        """A 3-trade Asian quota must not block after the first open."""
+        best = _FakeBest(direction="long", entry_price=2350.0)
+        mt5 = _make_mt5_ok()
+        quota = AsianRangeQuota(
+            last_open_date=_NOW_UTC.date(),
+            opens_count=1,
+            daily_limit=3,
+        )
+
+        action, out_best, blocked_reason = _run_pre_write_gate(
+            best=best,
+            session="ASIAN",
+            asian_sessions=_ASIAN_SESSIONS,
+            mt5_client=mt5,
+            symbol=_SYMBOL,
+            asian_range_quota=quota,
+            now_utc=_NOW_UTC,
+        )
+
+        assert action == "RANGE BUY"
+        assert out_best is best
+        assert blocked_reason is None
+
 
 # ---------------------------------------------------------------------------
 # Test: margin_cap error is swallowed gracefully (no crash)

@@ -154,6 +154,36 @@ class TestAsianQuota:
         # we report can_trade=False because this is a per-symbol view.
         assert snap["can_trade"] is False
 
+    def test_one_of_three_used_stays_green(self, tmp_path: Path):
+        root = _root(tmp_path)
+        _write_json(root / "asian_range_quota_state.json", {
+            "last_open_date": "2026-04-18",
+            "opens_count": 1,
+            "daily_limit": 3,
+        })
+        snap = build_guards_snapshot("XAUUSD", data_root=root, now=NOW_UTC)
+        quota = snap["asian_range_quota"]
+        assert quota["status"] == "green"
+        assert quota["exhausted"] is False
+        assert quota["opens_count"] == 1
+        assert quota["daily_limit"] == 3
+        assert quota["remaining"] == 2
+        assert snap["can_trade"] is True
+
+    def test_three_of_three_used_is_red(self, tmp_path: Path):
+        root = _root(tmp_path)
+        _write_json(root / "asian_range_quota_state.json", {
+            "last_open_date": "2026-04-18",
+            "opens_count": 3,
+            "daily_limit": 3,
+        })
+        snap = build_guards_snapshot("XAUUSD", data_root=root, now=NOW_UTC)
+        quota = snap["asian_range_quota"]
+        assert quota["status"] == "red"
+        assert quota["exhausted"] is True
+        assert quota["remaining"] == 0
+        assert snap["can_trade"] is False
+
 
 # ---------------------------------------------------------------------------
 # Drawdown guard — live_state.drawdown_snapshot soft-dep

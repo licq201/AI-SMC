@@ -1,82 +1,80 @@
 {
-  "cycle": 38,
-  "timestamp": "2026-05-20T00:30:01.655795+00:00",
-  "price": 4502.87,
-  "action": "RANGE BUY",
-  "reason": "RANGE support_bounce | $4465-$4589",
+  "cycle": 55,
+  "timestamp": "2026-06-05T17:30:00.844499+00:00",
+  "price": 4342.16,
+  "action": "HOLD",
+  "reason": "AI BEARISH (50%) but no SMC setups found",
   "regime": "trending",
   "ai_direction": "bearish",
   "ai_confidence": 0.5,
   "setups_count": 0,
   "volatility": "HIGH",
-  "trading_mode": "ranging",
+  "trading_mode": "trending",
   "blocked_reason": null,
   "range_bounds": {
-    "upper": 4589.09,
-    "lower": 4465.0,
-    "width": 124.09000000000015
+    "upper": 4515.43,
+    "lower": 4323.4,
+    "width": 192.03000000000065
   },
   "range_diagnostic": {
     "detect": {
       "h1_bars_count": 500,
       "donchian_lookback_required": 48,
-      "n_bearish_ob": 1,
+      "n_bearish_ob": 3,
       "n_bullish_ob": 0,
       "n_swing_high": 14,
-      "n_swing_low": 13,
-      "donchian_width_pts": 12409.0,
+      "n_swing_low": 14,
+      "donchian_width_pts": 19203.0,
       "min_range_width_required": 200.0,
       "max_range_width_required": 20000.0,
       "method_a_hit": false,
       "method_b_hit": false,
       "method_d_hit": true,
       "final_source": "donchian_channel",
-      "ai_regime_label": "TREND_DOWN",
-      "ai_regime_confidence": 0.8,
+      "ai_regime_label": "TRANSITION",
+      "ai_regime_confidence": 0.4,
       "range_invalidated_by_regime": null
     },
     "guards": {
-      "session": "ASIAN_CORE",
-      "is_asian_profile": true,
-      "min_width_required": 400.0,
-      "min_duration_required": 8,
-      "width_points": 12409.0,
+      "stage": "bounds_only",
+      "session": "NEW YORK",
+      "is_asian_profile": false,
+      "min_width_required": 800.0,
+      "min_duration_required": 12,
+      "width_points": 19203.0,
       "width_pass": true,
-      "rr_ratio": 1.42,
-      "rr_pass": true,
-      "touches_count": 16,
+      "touches_count": 55,
       "touches_pass": true,
       "duration_bars": 48,
       "duration_pass": true,
-      "guard6_pass": true,
-      "guard6_reason": null,
+      "rr_pass": null,
       "all_passed": true
     },
     "setups": {
-      "current_price": 4502.11,
-      "lower_boundary": 4465.0,
-      "upper_boundary": 4589.09,
-      "boundary_band_price": 37.227,
+      "current_price": 4467.23,
+      "lower_boundary": 4423.86,
+      "upper_boundary": 4515.43,
+      "boundary_band_price": 27.471,
       "boundary_pct_applied": 0.3,
-      "session": "ASIAN_CORE",
-      "near_lower": true,
+      "session": "ASIAN_LONDON_TRANSITION",
+      "near_lower": false,
       "near_upper": false,
-      "long_setup_built": true,
+      "long_setup_built": false,
       "short_setup_built": false,
-      "setup_count": 1,
-      "reason_if_zero": null,
-      "distance_to_upper_pct": 0.7009428640502898,
-      "distance_to_lower_pct": 0.2990571359497113,
+      "setup_count": 0,
+      "reason_if_zero": "middle",
+      "distance_to_upper_pct": 0.5263732663536171,
+      "distance_to_lower_pct": 0.4736267336463895,
       "ai_regime_gate_block": {},
-      "ai_regime_label": "TREND_DOWN",
-      "ai_regime_confidence": 0.8
+      "ai_regime_label": null,
+      "ai_regime_confidence": null
     }
   },
   "smc_diagnostic": {
     "htf_bias_direction": "bearish",
-    "htf_bias_confidence": 0.45,
-    "htf_bias_rationale": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2547%/bar (bearish).",
-    "stage_reject": "all_entries_failed (zones=3, min_conf=0.45)",
+    "htf_bias_confidence": 0.95,
+    "htf_bias_rationale": "Tier 1: D1 and H4 both bearish \u2014 confirmed multi-timeframe bias.",
+    "stage_reject": "all_entries_failed (zones=3, min_conf=0.55)",
     "final_count": 0,
     "ai_regime_stage": "deterministic_prefilter",
     "h1_zones_count": 3,
@@ -90,49 +88,33 @@
     },
     "zone_details": [
       {
-        "high": 4718.84,
-        "low": 4691.08,
+        "high": 4718.79,
+        "low": 4690.88,
         "direction": "short",
-        "dist_from_price": 188.97,
+        "dist_from_price": 348.46,
         "in_expanded_zone": false
       },
       {
-        "high": 4816.92,
-        "low": 4810.6,
+        "high": 4541.52,
+        "low": 4527.93,
         "direction": "short",
-        "dist_from_price": 308.49,
+        "dist_from_price": 185.51,
         "in_expanded_zone": false
       },
       {
-        "high": 4748.87,
-        "low": 4733.96,
+        "high": 4515.43,
+        "low": 4495.54,
         "direction": "short",
-        "dist_from_price": 231.85,
+        "dist_from_price": 153.12,
         "in_expanded_zone": false
       }
     ],
-    "current_price": 4502.11,
-    "min_confluence": 0.45
+    "current_price": 4342.42,
+    "min_confluence": 0.55
   },
-  "position_size": 0.02,
-  "htf_bias_conf": 0.7,
-  "htf_bias_tier": "tier_1",
-  "best_setup": {
-    "direction": "long",
-    "entry": 4502.11,
-    "sl": 4449.6,
-    "tp1": 4527.05,
-    "trigger": "support_bounce",
-    "confluence": 0.5,
-    "position_size_lots": 0.02,
-    "planned_rr_ratio": 1.42,
-    "exec_rr_ratio": 0.475,
-    "trail_activate_r": 0.3,
-    "trail_distance_r": 0.5,
-    "regime_label": "TREND_DOWN",
-    "regime_confidence": 0.8,
-    "regime_source": "atr_fallback"
-  },
+  "position_size": 0.0,
+  "htf_bias_conf": 0.0,
+  "htf_bias_tier": "neutral",
   "smc_trace": {
     "current_stage": "m15_entry",
     "stages": [
@@ -141,8 +123,8 @@
         "label": "HTF \u65b9\u5411",
         "status": "passed",
         "direction": "bearish",
-        "confidence": 0.45,
-        "explanation": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2547%/bar (bearish)."
+        "confidence": 0.95,
+        "explanation": "Tier 1: D1 and H4 both bearish \u2014 confirmed multi-timeframe bias."
       },
       {
         "name": "h1_zone",
@@ -180,8 +162,8 @@
       }
     ],
     "decision": {
-      "action": "RANGE BUY",
-      "reason": "RANGE support_bounce | $4465-$4589",
+      "action": "HOLD",
+      "reason": "AI BEARISH (50%) but no SMC setups found",
       "setup_count": 0
     },
     "ai": {
@@ -193,65 +175,63 @@
       "detect": {
         "h1_bars_count": 500,
         "donchian_lookback_required": 48,
-        "n_bearish_ob": 1,
+        "n_bearish_ob": 3,
         "n_bullish_ob": 0,
         "n_swing_high": 14,
-        "n_swing_low": 13,
-        "donchian_width_pts": 12409.0,
+        "n_swing_low": 14,
+        "donchian_width_pts": 19203.0,
         "min_range_width_required": 200.0,
         "max_range_width_required": 20000.0,
         "method_a_hit": false,
         "method_b_hit": false,
         "method_d_hit": true,
         "final_source": "donchian_channel",
-        "ai_regime_label": "TREND_DOWN",
-        "ai_regime_confidence": 0.8,
+        "ai_regime_label": "TRANSITION",
+        "ai_regime_confidence": 0.4,
         "range_invalidated_by_regime": null
       },
       "guards": {
-        "session": "ASIAN_CORE",
-        "is_asian_profile": true,
-        "min_width_required": 400.0,
-        "min_duration_required": 8,
-        "width_points": 12409.0,
+        "stage": "bounds_only",
+        "session": "NEW YORK",
+        "is_asian_profile": false,
+        "min_width_required": 800.0,
+        "min_duration_required": 12,
+        "width_points": 19203.0,
         "width_pass": true,
-        "rr_ratio": 1.42,
-        "rr_pass": true,
-        "touches_count": 16,
+        "touches_count": 55,
         "touches_pass": true,
         "duration_bars": 48,
         "duration_pass": true,
-        "guard6_pass": true,
-        "guard6_reason": null,
+        "rr_pass": null,
         "all_passed": true
       },
       "setups": {
-        "current_price": 4502.11,
-        "lower_boundary": 4465.0,
-        "upper_boundary": 4589.09,
-        "boundary_band_price": 37.227,
+        "current_price": 4467.23,
+        "lower_boundary": 4423.86,
+        "upper_boundary": 4515.43,
+        "boundary_band_price": 27.471,
         "boundary_pct_applied": 0.3,
-        "session": "ASIAN_CORE",
-        "near_lower": true,
+        "session": "ASIAN_LONDON_TRANSITION",
+        "near_lower": false,
         "near_upper": false,
-        "long_setup_built": true,
+        "long_setup_built": false,
         "short_setup_built": false,
-        "setup_count": 1,
-        "reason_if_zero": null,
-        "distance_to_upper_pct": 0.7009428640502898,
-        "distance_to_lower_pct": 0.2990571359497113,
+        "setup_count": 0,
+        "reason_if_zero": "middle",
+        "distance_to_upper_pct": 0.5263732663536171,
+        "distance_to_lower_pct": 0.4736267336463895,
         "ai_regime_gate_block": {},
-        "ai_regime_label": "TREND_DOWN",
-        "ai_regime_confidence": 0.8
+        "ai_regime_label": null,
+        "ai_regime_confidence": null
       }
     }
   },
   "smc_orderflow": {
     "summary": {
       "bias": "bearish",
-      "readiness": "ready",
-      "headline": "SMC \u5df2\u5f62\u6210\u53ef\u4ea4\u6613\u5019\u9009\uff1a\u591a\u5934\uff0c\u89e6\u53d1\u4e3a support_bounce\u3002",
-      "blocking_reason": ""
+      "readiness": "waiting",
+      "headline": "\u5927\u5468\u671f\u504f\u7a7a\uff0cH1 \u6709\u5019\u9009\u4ea4\u6613\u533a\uff0c\u7b49\u5f85 M15 \u5165\u573a\u786e\u8ba4\u3002",
+      "blocking_reason": "\u7b49\u5f85 M15 CHoCH / BOS / FVG \u56de\u8865\u786e\u8ba4"
     },
     "radar": [
       {
@@ -259,7 +239,7 @@
         "label": "\u7ed3\u6784",
         "status": "passed",
         "title": "\u5927\u5468\u671f\u504f\u7a7a",
-        "detail": "Tier 4: D1 bullish vs H4 bearish disagreement broken by SMA50 slope -0.2547%/bar (bearish)."
+        "detail": "Tier 1: D1 and H4 both bearish \u2014 confirmed multi-timeframe bias."
       },
       {
         "key": "zone",
@@ -278,16 +258,16 @@
       {
         "key": "entry",
         "label": "\u5165\u573a",
-        "status": "passed",
-        "title": "M15 \u5165\u573a\u786e\u8ba4 (BOS/CHoCH/FVG)",
+        "status": "waiting",
+        "title": "\u7b49\u5f85 M15 \u89e6\u53d1 (BOS/CHoCH/FVG)",
         "detail": "\u65e0\u89e6\u53d1 3\uff0c\u5171\u632f\u4e0d\u8db3 0\uff0c\u89e6\u53d1\u5668\u4e0d\u5339\u914d 0\u3002"
       },
       {
         "key": "regime",
         "label": "\u73af\u5883\u8fc7\u6ee4",
-        "status": "passed",
+        "status": "waiting",
         "title": "Regime: deterministic_prefilter",
-        "detail": "\u901a\u8fc7 AI Regime \u8fc7\u6ee4\u73af\u5883\u9650\u5236\u3002"
+        "detail": "\u7b49\u5f85 M15 \u89e6\u53d1\u540e\u8fdb\u884c\u73af\u5883\u8fc7\u6ee4\u3002"
       },
       {
         "key": "ai_review",
@@ -299,9 +279,9 @@
       {
         "key": "risk",
         "label": "\u98ce\u9669",
-        "status": "passed",
-        "title": "\u98ce\u9669\u6761\u4ef6\u901a\u8fc7",
-        "detail": "RR 0.47\uff0c\u5171\u632f 0.50"
+        "status": "waiting",
+        "title": "\u7b49\u5f85\u98ce\u9669\u8ba1\u7b97",
+        "detail": "\u5f62\u6210\u5019\u9009 setup \u540e\u518d\u8ba1\u7b97 RR\u3001\u5171\u632f\u548c\u98ce\u63a7\u3002"
       }
     ],
     "timeline": [
@@ -309,7 +289,7 @@
         "timeframe": "D1/H4",
         "label": "\u5927\u5468\u671f\u7ed3\u6784",
         "status": "passed",
-        "explanation": "D1/H4 \u5f53\u524d\u504f\u7a7a\uff0c\u7f6e\u4fe1\u5ea6 45%\u3002"
+        "explanation": "D1/H4 \u5f53\u524d\u504f\u7a7a\uff0c\u7f6e\u4fe1\u5ea6 95%\u3002"
       },
       {
         "timeframe": "H1",
@@ -320,13 +300,13 @@
       {
         "timeframe": "M15",
         "label": "\u5165\u573a\u89e6\u53d1",
-        "status": "passed",
-        "explanation": "\u5df2\u5f62\u6210\u5165\u573a\u89e6\u53d1 (BOS/CHoCH/FVG)\u3002"
+        "status": "waiting",
+        "explanation": "\u4ef7\u683c\u5c1a\u672a\u5728\u4ea4\u6613\u533a\u5185\u5f62\u6210 M15 \u7684 BOS\u3001CHoCH \u6216 FVG \u786e\u8ba4\u3002"
       },
       {
         "timeframe": "Regime",
         "label": "\u73af\u5883\u8fc7\u6ee4",
-        "status": "passed",
+        "status": "waiting",
         "explanation": "Regime \u9636\u6bb5\uff1adeterministic_prefilter\u3002"
       },
       {
@@ -340,54 +320,33 @@
       {
         "kind": "current_price",
         "label": "\u5f53\u524d\u4ef7",
-        "price": 4502.87,
+        "price": 4342.16,
         "side": "current",
         "detail": "\u672c\u8f6e\u5206\u6790\u4ef7\u683c"
       },
       {
         "kind": "zone",
         "label": "H1 \u7a7a\u5934\u4ea4\u6613\u533a",
-        "low": 4691.08,
-        "high": 4718.84,
+        "low": 4690.88,
+        "high": 4718.79,
         "side": "above",
-        "detail": "\u8ddd\u5f53\u524d\u4ef7 188.97\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
+        "detail": "\u8ddd\u5f53\u524d\u4ef7 348.46\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
       },
       {
         "kind": "zone",
         "label": "H1 \u7a7a\u5934\u4ea4\u6613\u533a",
-        "low": 4810.6,
-        "high": 4816.92,
+        "low": 4527.93,
+        "high": 4541.52,
         "side": "above",
-        "detail": "\u8ddd\u5f53\u524d\u4ef7 308.49\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
+        "detail": "\u8ddd\u5f53\u524d\u4ef7 185.51\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
       },
       {
         "kind": "zone",
         "label": "H1 \u7a7a\u5934\u4ea4\u6613\u533a",
-        "low": 4733.96,
-        "high": 4748.87,
+        "low": 4495.54,
+        "high": 4515.43,
         "side": "above",
-        "detail": "\u8ddd\u5f53\u524d\u4ef7 231.85\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
-      },
-      {
-        "kind": "entry",
-        "label": "\u8ba1\u5212\u5165\u573a",
-        "price": 4502.11,
-        "side": "current",
-        "detail": "support_bounce"
-      },
-      {
-        "kind": "stop_loss",
-        "label": "\u6b62\u635f",
-        "price": 4449.6,
-        "side": "risk",
-        "detail": "\u7cfb\u7edf\u8ba1\u5212\u6b62\u635f"
-      },
-      {
-        "kind": "take_profit",
-        "label": "\u6b62\u76c8",
-        "price": 4527.05,
-        "side": "reward",
-        "detail": "\u7cfb\u7edf\u8ba1\u5212\u6b62\u76c8"
+        "detail": "\u8ddd\u5f53\u524d\u4ef7 153.12\uff0c\u4ef7\u683c\u5c1a\u672a\u63a5\u8fd1"
       }
     ],
     "debug": {
@@ -395,5 +354,5 @@
     }
   },
   "runtime_status": "waiting_next_m15",
-  "next_bar_close": "2026-05-20T00:45:00+00:00"
+  "next_bar_close": "2026-06-05T17:45:00+00:00"
 }
