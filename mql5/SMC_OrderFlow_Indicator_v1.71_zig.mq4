@@ -3858,7 +3858,9 @@ void DrawPOIZone(int zone_index, string type_prefix, color zone_color, string la
     
     // 添加标签
     string label_name = "SMC_ZoneLabel_" + type_prefix + "_" + IntegerToString(zone.start_bar);
-    double label_price = zone.top_price + (zone.top_price - zone.bottom_price) * 0.05;
+    // [v1.71] 按区域索引轻微垂直错位,降低同价位标签重叠
+    double zh = (zone.top_price - zone.bottom_price);
+    double label_price = zone.top_price + zh * (0.05 + 0.06 * (zone_index % 3));
     
     if(ObjectCreate(0, label_name, OBJ_TEXT, 0, start_time, label_price))
     {
