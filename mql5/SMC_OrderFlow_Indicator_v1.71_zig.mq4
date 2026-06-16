@@ -64,7 +64,7 @@ extern int    AtrPeriod           = 14;     // ATR周期
 extern int    LiquidityReclaimWindow = 1;   // Liquidity Grab 回收确认窗口(根数)
 extern double LiquidityMinOverrunATR = 0.10;// 最小超越幅度(以ATR比例)
 
-extern double FVGQualityThreshold = 0.05;   // FVG 最低质量阈值(0-1)
+extern double FVGQualityThreshold = 0.0;    // FVG 最低质量阈值(0=关闭,标准库无此过滤) [v1.71]
 extern bool   OB_OnlyDrive        = false;   // 仅绑定驱动段产生的OB
 
 extern bool   UsePremiumDiscount  = false;   // 启用折价/溢价过滤(外部结构50%)
@@ -2506,8 +2506,8 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
         // 确保缺口足够大（至少1个点差）
         if(gap_size >= Point) {
             // 验证中间K线的强势特征
-            bool valid_bullish_fvg = close[current_bar + 1] > open[current_bar + 1] && // 中间K线看涨
-                                    close[current_bar] > close[current_bar + 1];        // 当前K线延续上涨
+            // 对齐标准:仅要求中间K线方向(去掉第三根延续条件) [v1.71]
+            bool valid_bullish_fvg = close[current_bar + 1] > open[current_bar + 1]; // 中间K线看涨
             
             if(valid_bullish_fvg) {
                 // 质量评分：Gap/ATR + 趋势一致；并进行折/溢价过滤
@@ -2544,8 +2544,8 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
         // 确保缺口足够大（至少1个点差）
         if(gap_size >= Point) {
             // 验证中间K线的强势特征
-            bool valid_bearish_fvg = close[current_bar + 1] < open[current_bar + 1] && // 中间K线看跌
-                                    close[current_bar] < close[current_bar + 1];        // 当前K线延续下跌
+            // 对齐标准:仅要求中间K线方向(去掉第三根延续条件) [v1.71]
+            bool valid_bearish_fvg = close[current_bar + 1] < open[current_bar + 1]; // 中间K线看跌
             
             if(valid_bearish_fvg) {
                 double gap_score = MathMin(1.0, gap_size / MathMax(fvg_atr, Point));
