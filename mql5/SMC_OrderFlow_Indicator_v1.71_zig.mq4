@@ -116,6 +116,10 @@ extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A
 extern bool   HideLowQualityOB         = false;  // 隐藏低于阈值的低质量OB
 extern double MinVisibleOBQualityScore = 0.20;   // HideLowQualityOB=true时的可见性阈值
 
+// --- G3. FVG 标准对齐参数 (v1.71 新增) ---
+extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
+extern bool   FVG_JoinConsecutive    = true;  // 合并相邻同向、价格重叠的FVG
+
 // --- E. 缠论优化参数 ---
 extern bool   EnableChanOptimization = true;  // 启用缠论优化（K线包含+分型过滤）
 extern int    MinStrokeBars          = 5;      // 笔的最小K线数(原始K线)
@@ -208,6 +212,7 @@ struct POI_Zone {
     double overlap_ratio;       // 重叠宽度/OB宽度
     double quality_score;       // OB质量分 0.0-1.0
     string quality_grade;       // 等级 A/B/C/D/X
+    double fill_pct;            // FVG累计填充比例 0.0-1.0(OB不使用) [v1.71]
 };
 
 struct Structure_Zone {
@@ -2769,6 +2774,7 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
     poi_zones[poi_count].overlap_ratio   = 0.0;
     poi_zones[poi_count].quality_score   = 0.0;
     poi_zones[poi_count].quality_grade   = "D";
+    poi_zones[poi_count].fill_pct        = 0.0;   // [v1.71]
 
     // string type_name = (type == 0) ? "FVG" : "OB";
     // Print("SMC: 添加新的", type_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]), 
