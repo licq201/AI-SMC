@@ -3083,62 +3083,61 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
     
     bool bullish_break = false, bearish_break = false;
     double momentum = 0.0;
-    
-    // 计算突破情况和动能
+
+    // [v1.71] 失效采用标准影线口径:多头OB影线跌破底部 / 空头OB影线突破顶部(对齐 chart.html mitigation)
     if(poi_zones[index].is_bullish) {
-        // 多头OB：检查是否收盘突破上方或下方
-        if(close[current_bar] > poi_zones[index].top_price) {
-            bullish_break = true;
-            momentum = CalculateBarMomentum(current_bar, high, low, close);
-        } else if(close[current_bar] < poi_zones[index].bottom_price) {
+        if(low[current_bar] < poi_zones[index].bottom_price) {          // 影线击穿底部=反向破坏(失效方向)
             bearish_break = true;
+            momentum = CalculateBarMomentum(current_bar, high, low, close);
+        } else if(close[current_bar] > poi_zones[index].top_price) {    // 收盘突破顶部=向上延续(非失效)
+            bullish_break = true;
             momentum = CalculateBarMomentum(current_bar, high, low, close);
         }
     } else {
-        // 空头OB：检查是否收盘突破上方或下方
-        if(close[current_bar] < poi_zones[index].bottom_price) {
-            bearish_break = true;
-            momentum = CalculateBarMomentum(current_bar, high, low, close);
-        } else if(close[current_bar] > poi_zones[index].top_price) {
+        if(high[current_bar] > poi_zones[index].top_price) {            // 影线突破顶部=反向破坏(失效方向)
             bullish_break = true;
+            momentum = CalculateBarMomentum(current_bar, high, low, close);
+        } else if(close[current_bar] < poi_zones[index].bottom_price) { // 收盘跌破底部=向下延续(非失效)
+            bearish_break = true;
             momentum = CalculateBarMomentum(current_bar, high, low, close);
         }
     }
     
     // 状态机逻辑
     switch(poi_zones[index].status) {
-        case 0: // Fresh -> Tested 或 (未触及即被击穿) -> Broken_Once
-            if(price_in_zone && IsValidTouch(index, current_bar)) {
+        case 0: // Fresh -> Broken_Once(影线击穿优先) 或 -> Tested
+            if((poi_zones[index].is_bullish && bearish_break) ||
+               (!poi_zones[index].is_bullish && bullish_break)) {
+                // [v1.71] 影线击穿远端优先于触及:对齐标准mitigation
+                poi_zones[index].status = 3;
+                poi_zones[index].first_break_bar = current_bar;
+                poi_zones[index].break_momentum = momentum;
+                g_data_version++;
+                LogOBLifecycleEvent(index, current_bar, "影线击穿远端", "Fresh -> Broken_Once");
+            } else if(price_in_zone && IsValidTouch(index, current_bar)) {
                 poi_zones[index].status = 1;
                 poi_zones[index].touch_count = 1;
                 poi_zones[index].last_touch_bar = current_bar;
                 g_data_version++;
                 LogOBLifecycleEvent(index, current_bar, "首次触及", "Fresh -> Tested");
-            } else if((poi_zones[index].is_bullish && bearish_break) ||
-                      (!poi_zones[index].is_bullish && bullish_break)) {
-                // 未登记任何有效触及即被反向收盘击穿：直接进入观察状态
+            }
+            break;
+
+        case 1: // Tested -> Broken_Once(影线击穿优先) 或 -> Weakened
+        case 2: // Weakened -> Broken_Once
+            if((poi_zones[index].is_bullish && bearish_break) || (!poi_zones[index].is_bullish && bullish_break)) {
+                // [v1.71] 影线击穿远端优先于触及
                 poi_zones[index].status = 3;
                 poi_zones[index].first_break_bar = current_bar;
                 poi_zones[index].break_momentum = momentum;
                 g_data_version++;
-                LogOBLifecycleEvent(index, current_bar, "未触及即被击穿", "Fresh -> Broken_Once");
-            }
-            break;
-            
-        case 1: // Tested -> Weakened 或 -> Broken_Once
-        case 2: // Weakened -> Broken_Once
-            if(price_in_zone && IsValidTouch(index, current_bar)) {
+                LogOBLifecycleEvent(index, current_bar, "影线击穿", "-> Broken_Once");
+            } else if(price_in_zone && IsValidTouch(index, current_bar)) {
                 poi_zones[index].status = 2;
                 poi_zones[index].touch_count++;
                 poi_zones[index].last_touch_bar = current_bar;
                 g_data_version++;
                 LogOBLifecycleEvent(index, current_bar, "再次触及", "-> Weakened");
-            } else if((poi_zones[index].is_bullish && bearish_break) || (!poi_zones[index].is_bullish && bullish_break)) {
-                poi_zones[index].status = 3;
-                poi_zones[index].first_break_bar = current_bar;
-                poi_zones[index].break_momentum = momentum;
-                g_data_version++;
-                LogOBLifecycleEvent(index, current_bar, "首次突破", "-> Broken_Once");
             }
             break;
             
