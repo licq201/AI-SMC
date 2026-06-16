@@ -106,15 +106,15 @@ extern bool   EnableOBLifecycle      = true;      // 启用OB生命周期机制(
 extern int    OBCooldownBars         = 5;        // 定义新触及的冷却K线数
 extern bool   RequireMomentumOnBreak = true;     // 失效确认是否需要动能K线
 extern double BreakMomentumATR       = 1.5;      // 动能K线实体需大于N倍ATR
-extern bool   RemoveInvalidOB        = false;    // 是否直接移除失效的OB
+extern bool   RemoveInvalidOB        = true;     // 是否直接移除失效的OB [v1.71默认开:隐藏Invalid降噪]
 extern bool   ShowOBLifecycleInfo   = false;    // [高级/调试] 显示OB生命周期详细信息
 
 // --- G2. OB/FVG 质量评分参数 (新增) ---
 extern bool   EnableOBFVGConfluence    = true;   // 启用OB/FVG同向重叠评分
 extern double MinOBFVGOverlapRatio     = 0.20;   // 重叠比例达此值时额外加分
 extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A/B/C/D/X]
-extern bool   HideLowQualityOB         = false;  // 隐藏低于阈值的低质量OB
-extern double MinVisibleOBQualityScore = 0.20;   // HideLowQualityOB=true时的可见性阈值
+extern bool   HideLowQualityOB         = true;   // 隐藏低于阈值的低质量OB [v1.71默认开]
+extern double MinVisibleOBQualityScore = 0.55;   // 可见性阈值[v1.71=0.55:留Fresh+Tested,隐Weakened/Broken/Invalid]
 
 // --- G3. FVG 标准对齐参数 (v1.71 新增) ---
 extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
