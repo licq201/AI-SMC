@@ -3008,6 +3008,8 @@ void UpdatePOIStatus(int current_bar, const double &high[], const double &low[],
 void ProcessFVGStatus(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].is_mitigated) return;
+    // [v1.71修复] 只处理形成之后(更新)的bar:MT4中更新=更小index;否则全量回放会用“形成前的老bar”误判为已填充
+    if(current_bar >= poi_zones[index].start_bar) return;
 
     double top    = poi_zones[index].top_price;
     double bottom = poi_zones[index].bottom_price;
@@ -3077,8 +3079,10 @@ void ProcessOBTraditional(int index, int current_bar, const double &high[], cons
 void ProcessOBLifecycle(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].status == 4) return; // 已失效，跳过
-    
-    bool price_in_zone = (low[current_bar] <= poi_zones[index].top_price && 
+    // [v1.71修复] 只处理形成之后(更新)的bar:避免全量回放用“形成前的老bar”误判触及/击穿
+    if(current_bar >= poi_zones[index].start_bar) return;
+
+    bool price_in_zone = (low[current_bar] <= poi_zones[index].top_price &&
                          high[current_bar] >= poi_zones[index].bottom_price);
     
     bool bullish_break = false, bearish_break = false;
