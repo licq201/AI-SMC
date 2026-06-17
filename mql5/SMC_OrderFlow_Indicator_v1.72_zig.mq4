@@ -25,8 +25,8 @@
 // --- A. 核心逻辑参数 (EA调用所需) ---
 extern int    StructureLookback   = 5;     // 结构点识别强度(左右各N根K线)
 extern int    MaxBarsToCalculate  = 1000;  // 最大计算K线数量(性能优化,0=全部)
-extern int    MaxFVGZones         = 5;     // 计算并存储的FVG区域的最大数量
-extern int    MaxOBZones          = 5;     // 计算并存储的OB区域的最大数量
+extern int    MaxFVGZones         = 15;     // 计算并存储的FVG区域的最大数量
+extern int    MaxOBZones          = 15;     // 计算并存储的OB区域的最大数量
 extern int    MaxBOSZones         = 2;     // 计算并存储的BOS区域的最大数量
 extern int    MaxCHOCHZones       = 2;     // 计算并存储的CHoCH区域的最大数量
 
@@ -341,6 +341,7 @@ datetime g_last_signal_time = 0;       // 最近一次发出警报的时间（�
 
 // 市场结构状态跟踪
 int g_market_trend = 0;                // 当前主趋势：1=上升，-1=下降，0=未确定
+int g_smc_bias = 0;                     // [SMC重写] SMC结构私有bias:0中性/1上升/-1下降(不影响g_market_trend)
 int g_last_hh_index = -1;              // 最近的HH索引
 int g_last_hl_index = -1;              // 最近的HL索引
 int g_last_lh_index = -1;              // 最近的LH索引
@@ -2486,6 +2487,75 @@ int FindLatestUnbrokenStructure(int structure_type)
         }
     }
     return -1; // 未找到
+}
+
+//+------------------------------------------------------------------+
+//| [SMC重写] 在(更旧older_bar, 更新newer_bar]间从旧到新找收盘破位bar  |
+//| is_up=true 找突破level上方,否则找跌破下方;ConfirmBreakClose 决定   |
+//| 用收盘还是 high/low。返回 -1 表示无确认破位。                       |
+//| 注:本指标 index 越大越旧;older_bar>newer_bar。                    |
+//+------------------------------------------------------------------+
+int FindBreakBarSMC(double level, bool is_up, int older_bar, int newer_bar,
+                    const double &high[], const double &low[], const double &close[])
+{
+    int lo = MathMax(newer_bar, 0);
+    int hi = older_bar - 1;
+    if(hi < lo) return newer_bar;   // 两摆点紧邻,直接用新摆点bar
+    for(int b = hi; b >= lo; b--) { // 从旧到新扫描
+        if(is_up) {
+            double v = ConfirmBreakClose ? close[b] : high[b];
+            if(v > level) return b;
+        } else {
+            double v = ConfirmBreakClose ? close[b] : low[b];
+            if(v < level) return b;
+        }
+    }
+    return -1;
+}
+
+//+------------------------------------------------------------------+
+//| [SMC重写] 固定摆点上的标准BOS/CHoCH检测(单次扫描,bias状态机)      |
+//| 只读swing_points[];只写structure_zones[];不动缠论/g_market_trend。 |
+//+------------------------------------------------------------------+
+void DetectStructureBreaksSMC(const double &high[], const double &low[], const double &close[])
+{
+    structure_count = 0;   // SMC结构输出,重建
+    g_smc_bias = 0;
+
+    bool   have_high = false, have_low = false;
+    double prev_high = 0.0,  prev_low = 0.0;
+    int    prev_high_bar = -1, prev_low_bar = -1;
+    int    total = ArraySize(close);
+
+    // 摆点按时间顺序:index 0=最旧, swing_count-1=最新
+    for(int i = 0; i < swing_count; i++) {
+        if(swing_points[i].structure_type < 0) continue;   // 跳过未分类/废弃摆点
+        int    sbar   = swing_points[i].bar_index;
+        double sprice = swing_points[i].price;
+        if(sbar < 0 || sbar >= total) continue;
+
+        if(swing_points[i].is_high) {
+            if(have_high && sprice > prev_high) {
+                int bbar = FindBreakBarSMC(prev_high, true, prev_high_bar, sbar, high, low, close);
+                if(bbar >= 0) {
+                    int stype = (g_smc_bias == -1) ? 1 : 0; // 下降中破前高=CHoCH(1),否则BOS(0)
+                    AddStructureZone(bbar, prev_high, true, stype, prev_high_bar);
+                    g_smc_bias = 1;
+                }
+            }
+            prev_high = sprice; prev_high_bar = sbar; have_high = true;
+        } else {
+            if(have_low && sprice < prev_low) {
+                int bbar = FindBreakBarSMC(prev_low, false, prev_low_bar, sbar, high, low, close);
+                if(bbar >= 0) {
+                    int stype = (g_smc_bias == 1) ? 1 : 0; // 上升中破前低=CHoCH(1),否则BOS(0)
+                    AddStructureZone(bbar, prev_low, false, stype, prev_low_bar);
+                    g_smc_bias = -1;
+                }
+            }
+            prev_low = sprice; prev_low_bar = sbar; have_low = true;
+        }
+    }
 }
 
 //+------------------------------------------------------------------+
