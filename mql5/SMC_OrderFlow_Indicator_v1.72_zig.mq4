@@ -107,15 +107,14 @@ extern bool   EnableOBLifecycle      = true;      // 启用OB生命周期机制(
 extern int    OBCooldownBars         = 5;        // 定义新触及的冷却K线数
 extern bool   RequireMomentumOnBreak = true;     // 失效确认是否需要动能K线
 extern double BreakMomentumATR       = 1.5;      // 动能K线实体需大于N倍ATR
-extern bool   RemoveInvalidOB        = true;     // 是否直接移除失效的OB [v1.71默认开:隐藏Invalid]
+// OB 显示等级:0=关键(A级/+S) 1=标准(默认) 2=扩展(含走弱) 3=全部(含失效,历史分析)
+extern int    OBDisplayLevel         = 1;        // [v1.72] OB显隐主开关(取代 HideLowQualityOB/MinVisibleOBQualityScore/RemoveInvalidOB)
 extern bool   ShowOBLifecycleInfo   = false;    // [高级/调试] 显示OB生命周期详细信息
 
 // --- G2. OB/FVG 质量评分参数 (新增) ---
 extern bool   EnableOBFVGConfluence    = true;   // 启用OB/FVG同向重叠评分
 extern double MinOBFVGOverlapRatio     = 0.20;   // 重叠比例达此值时额外加分
 extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A/B/C/D/X]
-extern bool   HideLowQualityOB         = true;   // [v1.71智能过滤] 只显示 +S结构背书 或 高等级OB(关=显示全部)
-extern double MinVisibleOBQualityScore = 0.60;   // 高等级阈值(>=B级);+S的OB无视此阈值始终显示
 
 // --- G3. FVG 标准对齐参数 (v1.71 新增) ---
 extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
@@ -1564,7 +1563,7 @@ int OnInit()
 
     // 初始化数组
     ArrayResize(swing_points, 1000);
-    ArrayResize(poi_zones, MaxFVGZones + MaxOBZones);
+    ArrayResize(poi_zones, MaxFVGZones + MaxOBZones * 3); // [v1.72] OB存储池放大,显示由等级+Top-N控制
     ArrayResize(structure_zones, MaxBOSZones + MaxCHOCHZones);
 
     // 初始化市场结构状态
@@ -2837,7 +2836,7 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
 {
     // 检查指定类型是否达到最大数量限制
     int current_type_count = CountPOIZonesByType(type);
-    int max_count = (type == 0) ? MaxFVGZones : MaxOBZones; // 0=FVG, 1=OB
+    int max_count = (type == 0) ? MaxFVGZones : (MaxOBZones * 3); // [v1.72] OB存储池放大(显示数仍受MaxOBZones控制)
 
     if(current_type_count >= max_count) {
         RemoveOldestPOIZoneByType(type);
@@ -3239,16 +3238,24 @@ void LogOBLifecycleEvent(int index, int current_bar, string event_type, string t
 bool ShouldSkipOB(int index, string &skip_reason)
 {
     if(EnableOBLifecycle && poi_zones[index].status >= 0) {
-        // 使用生命周期逻辑
-        if(poi_zones[index].status == 4 && RemoveInvalidOB) { // Invalid且设置移除
-            skip_reason = "失效已移除";
+        // [v1.72] 由 OBDisplayLevel 统一驱动:换算可见阈值与是否显示失效
+        double min_score; bool show_invalid;
+        switch(OBDisplayLevel) {
+            case 0: min_score = 0.80; show_invalid = false; break; // 关键
+            case 2: min_score = 0.40; show_invalid = false; break; // 扩展
+            case 3: min_score = 0.00; show_invalid = true;  break; // 全部(历史)
+            case 1:
+            default: min_score = 0.60; show_invalid = false; break; // 标准
+        }
+        // 失效隐藏(除非等级3)
+        if(poi_zones[index].status == 4 && !show_invalid) {
+            skip_reason = "失效隐藏(等级<3)";
             return true;
         }
-        // [v1.71 hybrid] 智能过滤:开启后只显示 "+S结构背书" 或 "高等级(>=阈值)" 的OB
-        if(HideLowQualityOB
-           && !poi_zones[index].has_structure_confluence
-           && poi_zones[index].quality_score < MinVisibleOBQualityScore) {
-            skip_reason = "低质量隐藏(非+S且低于阈值)";
+        // 质量过滤:+S结构背书的OB无视阈值始终显示
+        if(!poi_zones[index].has_structure_confluence &&
+           poi_zones[index].quality_score < min_score) {
+            skip_reason = "低于显示等级";
             return true;
         }
     } else {
@@ -3259,6 +3266,27 @@ bool ShouldSkipOB(int index, string &skip_reason)
         }
     }
     return false;
+}
+
+//+------------------------------------------------------------------+
+//| [v1.72] 计算OB显示优先级cutoff:返回第MaxOBZones高的quality_score   |
+//| 候选数<=MaxOBZones时返回-1(全显示)。绘制时只画 score>=cutoff。      |
+//+------------------------------------------------------------------+
+double ComputeOBDisplayCutoff()
+{
+    double scores[];
+    int n = 0;
+    for(int i = 0; i < poi_count; i++) {
+        if(poi_zones[i].poi_type != 1) continue;
+        string r = "";
+        if(ShouldSkipOB(i, r)) continue;   // 仅统计通过等级过滤的OB
+        ArrayResize(scores, n + 1);
+        scores[n] = poi_zones[i].quality_score;
+        n++;
+    }
+    if(n <= MaxOBZones) return -1.0;        // 全部可显示
+    ArraySort(scores);                       // 升序
+    return scores[n - MaxOBZones];           // 第MaxOBZones高 = cutoff
 }
 
 //+------------------------------------------------------------------+
@@ -3666,6 +3694,7 @@ void DrawGraphicalObjects()
             }
         }
 
+        double ob_cutoff = ComputeOBDisplayCutoff(); // [v1.72] 优先级Top-N门槛
         for(int i = 0; i < poi_count; i++) {
             if(poi_zones[i].poi_type == 1 && (!poi_zones[i].is_drawn || ForceOBRedraw)) { // Order Block且未绘制或强制重绘
 
@@ -3679,6 +3708,12 @@ void DrawGraphicalObjects()
                         string direction = poi_zones[i].is_bullish ? "看涨" : "看跌";
                         Print("SMC OB调试: 跳过", skip_reason, direction, "OB区域 at bar ", poi_zones[i].start_bar);
                     }
+                    continue;
+                }
+                // [v1.72] 优先级Top-N:低于cutoff的低优先OB不画(保证留重要的)
+                if(ob_cutoff > 0.0 && poi_zones[i].quality_score < ob_cutoff) {
+                    ob_skipped++;
+                    poi_zones[i].is_drawn = true;
                     continue;
                 }
 
@@ -3795,12 +3830,12 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
     string direction_suffix = zone.is_bullish ? "_up" : "_down";
     string obj_name = "SMC_Struct_" + type_name + "_" + IntegerToString(zone.start_bar) + direction_suffix;
 
-    // [v1.72] 起点改为突破确认bar(对齐chart.html);被破摆点价位不变
+    // [v1.72] 起点回退为被破摆点(swing_bar),start_bar 兜底
     datetime ray_start_time;
-    if(zone.start_bar >= 0 && zone.start_bar < Bars) {
-        ray_start_time = Time[zone.start_bar];   // 从突破点开始
-    } else if(zone.swing_bar >= 0 && zone.swing_bar < Bars) {
-        ray_start_time = Time[zone.swing_bar];   // 兜底:摆点
+    if(zone.swing_bar >= 0 && zone.swing_bar < Bars) {
+        ray_start_time = Time[zone.swing_bar];   // 从被破摆点开始
+    } else if(zone.start_bar >= 0 && zone.start_bar < Bars) {
+        ray_start_time = Time[zone.start_bar];   // 兜底:突破点
     } else {
         ray_start_time = TimeCurrent();          // 最终兜底
     }
