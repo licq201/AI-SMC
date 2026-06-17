@@ -3807,17 +3807,16 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
     // 第二点：位于右侧的未来时间，用于定义射线方向
     datetime ray_dir_time = TimeCurrent() + PeriodSeconds() * 100;
 
-    // 创建趋势线并设为向右射线
-    if(ObjectCreate(0, obj_name, OBJ_TREND, 0, ray_start_time, zone.top_price, ray_dir_time, zone.top_price))
-    {
-        ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
-        ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);
-        // [v1.72] 对齐chart.html:BOS虚线、CHoCH实线
-        ObjectSetInteger(0, obj_name, OBJPROP_STYLE, (type_name == "BOS") ? STYLE_DASH : STYLE_SOLID);
-        // 尽量兼容：开启右侧射线
-        ObjectSetInteger(0, obj_name, OBJPROP_RAY, true);
-        ObjectSetInteger(0, obj_name, OBJPROP_RAY_RIGHT, true);
-    }
+    // 创建趋势线并设为向右射线([v1.72]修复:样式对新建/已存在对象都生效)
+    ObjectCreate(0, obj_name, OBJ_TREND, 0, ray_start_time, zone.top_price, ray_dir_time, zone.top_price);
+    ObjectMove(0, obj_name, 0, ray_start_time, zone.top_price);
+    ObjectMove(0, obj_name, 1, ray_dir_time,  zone.top_price);
+    ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
+    ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);
+    // 对齐chart.html:BOS虚线、CHoCH实线
+    ObjectSetInteger(0, obj_name, OBJPROP_STYLE, (type_name == "BOS") ? STYLE_DASH : STYLE_SOLID);
+    ObjectSetInteger(0, obj_name, OBJPROP_RAY, true);
+    ObjectSetInteger(0, obj_name, OBJPROP_RAY_RIGHT, true);
 
     // 添加标签（也包含方向信息）
     string label_name = "SMC_StructLabel_" + type_name + "_" + IntegerToString(zone.start_bar) + direction_suffix;
