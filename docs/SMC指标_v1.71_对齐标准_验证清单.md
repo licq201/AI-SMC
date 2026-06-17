@@ -60,4 +60,23 @@
 ## 6. 已知差异(非缺陷)
 
 - v1.71 仍保留 OB 五状态生命周期(Fresh/Tested/Weakened/Broken_Once/Invalid)作为增强,标准只有"mitigated 布尔"。显示上通过默认隐藏低质量/失效达到与标准等价的可见集合。
-- BOS/CHoCH 尚未对齐(Phase 2),其判定仍比标准严(`RequireDisplacement`/`RequireFVG_CHOCH`/MA21 等)。
+- BOS/CHoCH 对齐见下方 Phase 2(v1.72)。
+
+---
+
+## Phase 2 · BOS/CHoCH 对齐验证(v1.72)
+
+适用文件:`mql5/SMC_OrderFlow_Indicator_v1.72_zig.mq4`
+
+| # | 场景 | v1.71 行为 | v1.72 期望 | chart.html 对照 |
+|---|------|-----------|-----------|----------------|
+| 1 | 无伴随 FVG 的 CHoCH | 漏标 | 标出 | chart.html 有 → 应一致 |
+| 2 | 有 FVG 的 CHoCH | 标出 | 标出 | 一致 |
+| 3 | BOS(顺势破摆点) | 标出(实线) | 标出 + **虚线** | 一致 |
+| 4 | CHoCH 线型 | 实线 | **实线** | chart.html CHoCH 实线 |
+
+**定义核对**(应已一致):方向(BOS 破 HH=多/破 LL=空;CHoCH 破 HL=空/破 LH=多)、价位=被破摆点价、确认 bar=收盘突破 bar。
+
+**已知有意差异(非缺陷)**:CHoCH 唯一性(每趋势一个)、受保护摆点验证、位移过滤(`RequireDisplacement`)—— 使 MT4 结构比标准库更干净;趋势未定义(0)时不标。
+
+**回退**:`RequireFVG_CHOCH=true` 恢复严格 CHoCH;或改用 v1.71 文件。
