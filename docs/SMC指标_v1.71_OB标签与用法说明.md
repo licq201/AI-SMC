@@ -78,7 +78,9 @@
 | 参数 | 默认 | 作用 |
 |------|------|------|
 | `ZoneDisplayStyle` | 1 | 0=填充 / **1=边框(K线可见)** / 2=上下边线 |
-| `ShowZoneRightTag` | true | 在图表最右侧空白区画小实色块,用颜色一眼区分质量(仅边框/上下线样式) |
+| `ShowZoneRightTag` | true | 在图表右侧空白区画小实色块,用颜色一眼区分质量(仅边框/上下线样式) |
+| `ZoneRightTagOffsetBars` | 25 | 色标距最后 K 线的 bar 数(向右偏移) |
+| `ZoneRightTagWidthBars` | 3 | 色标宽度(bar 数) |
 
 - 默认:OB/FVG 只画边框,不挡 K 线;右侧空白处有小色块表示质量颜色。
 - 想要旧的实色块 → `ZoneDisplayStyle=0`;只看上下边界 → `=2`;不要右侧色标 → `ShowZoneRightTag=false`。

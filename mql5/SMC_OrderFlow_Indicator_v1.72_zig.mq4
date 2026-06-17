@@ -119,6 +119,8 @@ extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A
 // --- G4. 区域显示形式 (v1.72) ---
 extern int    ZoneDisplayStyle  = 1;     // OB/FVG区域:0=填充 1=边框(默认) 2=上下边线
 extern bool   ShowZoneRightTag  = true;  // 右侧空白区画质量色标(仅边框/上下线样式)
+extern int    ZoneRightTagOffsetBars = 25;  // 色标距最后K线的bar数(向右偏移,默认25)
+extern int    ZoneRightTagWidthBars  = 3;   // 色标宽度(bar数)
 
 // --- G3. FVG 标准对齐参数 (v1.71 新增) ---
 extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
@@ -3969,8 +3971,10 @@ void DrawPOIZone(int zone_index, string type_prefix, color zone_color, string la
     // [v1.72] 右侧质量色标:非填充样式下,在最后K线右侧空白区画小实色块(颜色=质量色)
     if(ShowZoneRightTag && ZoneDisplayStyle != 0) {
         string tag_name = obj_name + "_Tag";
-        datetime tag_start = TimeCurrent() + PeriodSeconds() * 1;
-        datetime tag_end   = TimeCurrent() + PeriodSeconds() * 4;
+        int tag_off = MathMax(1, ZoneRightTagOffsetBars);
+        int tag_w   = MathMax(1, ZoneRightTagWidthBars);
+        datetime tag_start = TimeCurrent() + PeriodSeconds() * tag_off;
+        datetime tag_end   = TimeCurrent() + PeriodSeconds() * (tag_off + tag_w);
         if(ObjectCreate(0, tag_name, OBJ_RECTANGLE, 0, tag_start, zone.bottom_price, tag_end, zone.top_price)) {
             ObjectSetInteger(0, tag_name, OBJPROP_COLOR, zone_color);
             ObjectSetInteger(0, tag_name, OBJPROP_BACK, false);
