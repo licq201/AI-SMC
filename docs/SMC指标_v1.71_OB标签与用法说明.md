@@ -49,23 +49,27 @@
 
 ---
 
-## 4. 智能过滤开关(只看高质量 OB)
+## 4. OB 展示等级 + 优先级 [v1.72]
 
-新增"智能过滤",对齐 chart.html 只保留高质量 OB 的观感:
+**`OBDisplayLevel`(默认 1)** —— 一个参数控制 OB 显隐:
 
-| 参数 | v1.71 默认 | 作用 |
-|------|-----------|------|
-| `HideLowQualityOB` | **true** | 开启智能过滤:**只显示 `+S` 结构背书 或 等级≥阈值** 的 OB |
-| `MinVisibleOBQualityScore` | **0.60** | 高等级阈值(≥B 级);**`+S` 的 OB 无视此阈值,始终显示** |
-| `RemoveInvalidOB` | **true** | 隐藏 Invalid(失效)OB |
+| 值 | 名称 | 显示内容 | 用途 |
+|----|------|----------|------|
+| 0 | 关键 | 只 A 级(分≥0.80)或 `+S` | 极简,只看最强 |
+| **1** | **标准(默认)** | Fresh+Tested(分≥0.60)或 `+S` | 日常交易 |
+| 2 | 扩展 | 再加 Weak/Watch(分≥0.40) | 看走弱区 |
+| 3 | 全部(历史) | 含 Invalid 失效区 | 历史复盘 |
 
-**逻辑**:`HideLowQualityOB=true` 时,一个 OB 只要满足 **(`+S` 结构背书) 或 (质量分 ≥ 0.60)** 之一就显示,否则隐藏。
-→ 结果:画面只留下"结构背书的"和"高等级的"OB,杂乱的低质量 OB 自动消失。
+> `+S` 结构背书的 OB 在 0/1/2 级**无视阈值始终显示**。
+
+**优先级 Top-N**:当通过等级过滤的 OB 多于 `MaxOBZones` 时,按 `quality_score` 只显示**最重要的 `MaxOBZones` 个**——老的高质量 OB 不会被新的普通 OB 挤掉。
 
 **微调:**
-- 想看**全部** OB(含 Weak/Watch)→ `HideLowQualityOB = false`。
-- 只留**最强 A 级 + 结构背书**→ `MinVisibleOBQualityScore = 0.80`。
-- 嫌 OB/FVG 数量多 → 调小 `MaxOBZones` / `MaxFVGZones`(截图里设到 20 才会很密)。
+- 历史复盘看全部(含失效/多次触及)→ `OBDisplayLevel = 3`。
+- 只看最强 → `OBDisplayLevel = 0`。
+- 控制数量 → `MaxOBZones`(优先级保留最重要的那批)。
+
+> 旧参数 `HideLowQualityOB` / `MinVisibleOBQualityScore` / `RemoveInvalidOB` 已由 `OBDisplayLevel` 取代。
 
 ---
 
@@ -84,7 +88,7 @@
 
 ## 6. 实战用法(建议)
 
-1. **优先级**:在 `HideLowQualityOB=true` 下,图上留下的就是可用 OB。其中带 `+S`(结构背书)或 `+FVG`(供需共振)的 Fresh/Tested 为首选入场区。
+1. **优先级**:默认 `OBDisplayLevel=1` 下图上留下的就是可用 OB(并按质量取 Top-`MaxOBZones`)。其中带 `+S`(结构背书)或 `+FVG`(供需共振)的 Fresh/Tested 为首选入场区。
 2. **方向**:多头 OB 作为回调支撑(需求区),空头 OB 作为反弹阻力(供给区)。
 3. **失效**:价格有效跌破多头 OB 底部(或突破空头 OB 顶部)→ 转 Watch/Invalid,不再作为支撑/阻力。
 4. **与结构配合**:`+S` 表示该 OB 紧邻 BOS/CHoCH,属"结构驱动"的高确信区,优先级最高。
@@ -94,6 +98,6 @@
 
 ## 7. 回退
 
-- 想回到"显示全部 OB(含低质量)"→ `HideLowQualityOB=false`、`RemoveInvalidOB=false`。
+- 想显示**全部 OB**(含失效/多次触及,历史复盘)→ `OBDisplayLevel=3`。
 - 想完全回到旧逻辑(无生命周期)→ `EnableOBLifecycle=false`。
 - 整体回退 → 使用旧文件 `SMC_OrderFlow_Indicator_v1.70_zig.mq4`。
