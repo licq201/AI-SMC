@@ -1742,6 +1742,13 @@ int OnCalculate(const int rates_total,
         }
         // --- 摆点后置过滤结束 ---
 
+        // [SMC重写] 追加:在最终摆点上重建标准BOS/CHoCH结构显示(覆盖旧structure_zones)
+        // 上游(摆点/缠论/is_broken/趋势引擎/g_market_trend)保持不变;仅SMC结构显示改为标准定义
+        DetectStructureBreaksSMC(high, low, close);
+        for(int sb = limit; sb >= 0; sb--) {
+            UpdateBuffers(sb);
+        }
+
         // V1.62：后置裁剪，确保只保留每种类型最新的N个（删除超出限制的旧对象）
         TrimStructureZonesToNewest();
 
