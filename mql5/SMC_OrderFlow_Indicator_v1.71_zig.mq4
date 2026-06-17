@@ -213,6 +213,7 @@ struct POI_Zone {
     double quality_score;       // OB质量分 0.0-1.0
     string quality_grade;       // 等级 A/B/C/D/X
     double fill_pct;            // FVG累计填充比例 0.0-1.0(OB不使用) [v1.71]
+    bool   has_structure_confluence; // OB是否紧邻同向结构突破(BOS/CHoCH) [v1.71]
 };
 
 struct Structure_Zone {
@@ -2803,6 +2804,7 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
     poi_zones[poi_count].quality_score   = 0.0;
     poi_zones[poi_count].quality_grade   = "D";
     poi_zones[poi_count].fill_pct        = 0.0;   // [v1.71]
+    poi_zones[poi_count].has_structure_confluence = false; // [v1.71]
 
     // string type_name = (type == 0) ? "FVG" : "OB";
     // Print("SMC: 添加新的", type_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]), 
@@ -3221,6 +3223,7 @@ string GetOBDisplayLabel(int index)
     if(EnableOBLifecycle && poi_zones[index].status >= 0) {
         // 使用生命周期逻辑：方向 + OB[+FVG] + 状态 + [等级]
         string fvg_tag   = poi_zones[index].has_fvg_overlap ? "+FVG" : "";
+        string struct_tag = poi_zones[index].has_structure_confluence ? "+S" : "";
         string grade_tag = ShowOBQualityGrade ? (" [" + poi_zones[index].quality_grade + "]") : "";
         string state_tag = "";
         switch(poi_zones[index].status) {
@@ -3231,7 +3234,7 @@ string GetOBDisplayLabel(int index)
             case 4: state_tag = " Invalid"; break;
             default: state_tag = "";        break;
         }
-        return direction + " OB" + fvg_tag + state_tag + grade_tag;
+        return direction + " OB" + fvg_tag + struct_tag + state_tag + grade_tag;
     } else {
         // 传统逻辑（向后兼容）
         string label = direction + " OB";
@@ -3316,6 +3319,8 @@ double CalculateOBQualityScore(int ob_index)
        (!poi_zones[ob_index].is_bullish && g_market_trend == -1)) {
         bonus += 0.05;
     }
+    // [v1.71 hybrid] 结构加分:OB紧邻同向结构突破(BOS/CHoCH),更贴近标准
+    if(poi_zones[ob_index].has_structure_confluence) bonus += 0.15;
 
     double score = base + bonus;
     if(score < 0.0) score = 0.0;
@@ -3349,6 +3354,16 @@ void RefreshOBFVGConfluence()
                     poi_zones[i].overlap_fvg_bar = poi_zones[j].start_bar;
                     poi_zones[i].has_fvg_overlap = true;
                 }
+            }
+        }
+
+        // [v1.71 hybrid] 结构加分:扫描同向、邻近(±15根)的结构突破(BOS/CHoCH)
+        poi_zones[i].has_structure_confluence = false;
+        for(int s = 0; s < structure_count; s++) {
+            if(structure_zones[s].is_bullish != poi_zones[i].is_bullish) continue;
+            if(MathAbs(structure_zones[s].start_bar - poi_zones[i].start_bar) <= 15) {
+                poi_zones[i].has_structure_confluence = true;
+                break;
             }
         }
 
