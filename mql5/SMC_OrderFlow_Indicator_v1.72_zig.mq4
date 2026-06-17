@@ -5,10 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "SMC Trading System"
 #property link      "https://bbs.sunwy.com"
-#property version   "1.71"
+#property version   "1.72"
 #property description "SMC_OrderFlow_Indicator, 专业SMC订单流市场结构分析指标 - BOS/CHOCH优化版"
 #property description "author:博思客 V:2030988"
-#property description "v1.71: FVG/OB对齐标准(Python smc_core)—FVG放宽+部分填充+合并连续;OB结构突破驱动+影线失效口径"
+#property description "v1.72: BOS/CHoCH对齐标准—CHoCH不再强制FVG;BOS虚线/CHoCH实线对齐chart.html"
+#property description "v1.71: FVG对齐标准(放宽+部分填充%+合并连续);OB主循环生成+结构加分(+S)+智能过滤(只留+S或高等级)"
 #property description "v1.70: 新增ZigZag摆点前置过滤(缠论之前,严格交集,开关EnableZigZagFilter默认true)"
 #property description "v1.69: 缠论V1.64极短笔收窄(方案A)—新低/新高延伸时不丢current，避免真LL被吞后误连4-7"
 #property description "v1.67: 回迁缠论不成笔过滤为chan_1逻辑，修复LH/HL/LH/LL/HH误连2-5成笔"
@@ -81,7 +82,7 @@ extern int    EqualTolerancePoints = 2;      // 等高/等低容差(点)，视�
 extern int    TrendWindowStructures= 6;      // 趋势确认窗口：最近结构数量(4~6)
 extern bool   RequireDisplacement  = true;   // 触发需位移（实体/全幅 & 全幅/ATR）
 extern bool   RequireFVG_BOS       = false;  // BOS是否要求伴随FVG
-extern bool   RequireFVG_CHOCH     = true;   // CHOCH是否要求伴随FVG（更严格）
+extern bool   RequireFVG_CHOCH     = false;  // CHoCH是否要求伴随FVG [v1.72对齐标准:默认关]
 
 // --- E. 缠论MA21均线参数 ---
 extern bool   EnableMA21Filter    = true;        // 启用MA21均线过滤（在缠论步骤中执行）
@@ -3734,7 +3735,8 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
     {
         ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
         ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);
-        ObjectSetInteger(0, obj_name, OBJPROP_STYLE, STYLE_SOLID);
+        // [v1.72] 对齐chart.html:BOS虚线、CHoCH实线
+        ObjectSetInteger(0, obj_name, OBJPROP_STYLE, (type_name == "BOS") ? STYLE_DASH : STYLE_SOLID);
         // 尽量兼容：开启右侧射线
         ObjectSetInteger(0, obj_name, OBJPROP_RAY, true);
         ObjectSetInteger(0, obj_name, OBJPROP_RAY_RIGHT, true);
