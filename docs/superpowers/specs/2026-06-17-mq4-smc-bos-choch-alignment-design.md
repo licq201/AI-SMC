@@ -1,6 +1,6 @@
 # MQ4 SMC 指标对齐标准 · Phase 2(BOS + CHoCH)设计
 
-适用文件:`mql5/SMC_OrderFlow_Indicator_v1.71_zig.mq4`(在 Phase 1 基础上继续演进,不开新版本号)
+适用文件:`mql5/SMC_OrderFlow_Indicator_v1.72_zig.mq4`(从修好的 v1.71 演进;v1.71 保留为回退基线)
 基线参照:Python `src/smc/smc_core/structure.py`(基于 `smartmoneyconcepts.bos_choch`)+ `dashboard/chart.html`
 更新日期:2026-06-17
 前序:Phase 1(FVG+OB)`docs/superpowers/specs/2026-06-16-mq4-smc-fvg-ob-alignment-design.md`
