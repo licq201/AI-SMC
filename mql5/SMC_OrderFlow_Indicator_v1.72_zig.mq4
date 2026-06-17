@@ -2712,9 +2712,9 @@ void IdentifyOrderBlocks(int current_bar, const double &open[], const double &hi
 
     bool allow_bullish_ob = (!OB_OnlyDrive) || (current_bar == g_last_break_up_bar);
     if(strong_bullish && allow_bullish_ob) {
-        // 寻找前面最近的看跌K线作为Order Block
-        for(int i = current_bar - 1; i >= MathMax(current_bar - 5, 0); i--) {
-            if(close[i] < open[i]) { // 找到看跌K线
+        // [v1.72] 冲击之前(更旧侧)最后一根阴线作为看涨OB
+        for(int i = current_bar + 1; i <= MathMin(current_bar + 5, ArraySize(close) - 1); i++) {
+            if(close[i] < open[i]) { // 找到看跌K线(阴线)
                 AddPOIZone(i, high[i], low[i], true, 1);
                 if(EnableOBDebug) {
                     Print("SMC OB创建: 看涨Order Block at bar ", i, " 时间: ", TimeToString(Time[i]),
@@ -2734,9 +2734,9 @@ void IdentifyOrderBlocks(int current_bar, const double &open[], const double &hi
 
     bool allow_bearish_ob = (!OB_OnlyDrive) || (current_bar == g_last_break_down_bar);
     if(strong_bearish && allow_bearish_ob) {
-        // 寻找前面最近的看涨K线作为Order Block
-        for(int i = current_bar - 1; i >= MathMax(current_bar - 5, 0); i--) {
-            if(close[i] > open[i]) { // 找到看涨K线
+        // [v1.72] 冲击之前(更旧侧)最后一根阳线作为看跌OB
+        for(int i = current_bar + 1; i <= MathMin(current_bar + 5, ArraySize(close) - 1); i++) {
+            if(close[i] > open[i]) { // 找到看涨K线(阳线)
                 AddPOIZone(i, high[i], low[i], false, 1);
                 if(EnableOBDebug) {
                     Print("SMC OB创建: 看跌Order Block at bar ", i, " 时间: ", TimeToString(Time[i]),
@@ -3795,14 +3795,14 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
     string direction_suffix = zone.is_bullish ? "_up" : "_down";
     string obj_name = "SMC_Struct_" + type_name + "_" + IntegerToString(zone.start_bar) + direction_suffix;
 
-    // --- 修正：射线从被突破的摆点开始向右延伸 ---
-    // 起点：被突破的摆点时间（swing_bar），这才是正确的SMC概念
+    // [v1.72] 起点改为突破确认bar(对齐chart.html);被破摆点价位不变
     datetime ray_start_time;
-    if(zone.swing_bar >= 0 && zone.swing_bar < Bars) {
-        ray_start_time = Time[zone.swing_bar];  // 从被突破的摆点开始
+    if(zone.start_bar >= 0 && zone.start_bar < Bars) {
+        ray_start_time = Time[zone.start_bar];   // 从突破点开始
+    } else if(zone.swing_bar >= 0 && zone.swing_bar < Bars) {
+        ray_start_time = Time[zone.swing_bar];   // 兜底:摆点
     } else {
-        ray_start_time = Time[zone.start_bar];  // 备用：从突破发生点开始
-        Print("SMC 警告: ", type_name, " 无效的swing_bar索引 (", zone.swing_bar, ")，射线起点改为突破点");
+        ray_start_time = TimeCurrent();          // 最终兜底
     }
     // 第二点：位于右侧的未来时间，用于定义射线方向
     datetime ray_dir_time = TimeCurrent() + PeriodSeconds() * 100;
@@ -3812,8 +3812,8 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
     ObjectMove(0, obj_name, 0, ray_start_time, zone.top_price);
     ObjectMove(0, obj_name, 1, ray_dir_time,  zone.top_price);
     ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
-    ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);
-    // 对齐chart.html:BOS虚线、CHoCH实线
+    // [v1.72] MT4仅在线宽<=1时渲染虚线:BOS宽1虚线 / CHoCH宽2实线
+    ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, (type_name == "BOS") ? 1 : 2);
     ObjectSetInteger(0, obj_name, OBJPROP_STYLE, (type_name == "BOS") ? STYLE_DASH : STYLE_SOLID);
     ObjectSetInteger(0, obj_name, OBJPROP_RAY, true);
     ObjectSetInteger(0, obj_name, OBJPROP_RAY_RIGHT, true);
