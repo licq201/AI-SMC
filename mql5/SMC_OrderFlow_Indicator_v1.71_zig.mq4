@@ -65,7 +65,7 @@ extern int    LiquidityReclaimWindow = 1;   // Liquidity Grab 回收确认窗口
 extern double LiquidityMinOverrunATR = 0.10;// 最小超越幅度(以ATR比例)
 
 extern double FVGQualityThreshold = 0.0;    // FVG 最低质量阈值(0=关闭,标准库无此过滤) [v1.71]
-extern bool   OB_OnlyDrive        = false;   // [已废弃 v1.71] OB改为结构突破事件驱动,本参数不再生效
+extern bool   OB_OnlyDrive        = false;   // 仅绑定驱动段产生的OB
 
 extern bool   UsePremiumDiscount  = false;   // 启用折价/溢价过滤(外部结构50%)
 extern bool   PreferGolden62      = false;   // 62%作为优先条件(更优位置)
@@ -106,15 +106,15 @@ extern bool   EnableOBLifecycle      = true;      // 启用OB生命周期机制(
 extern int    OBCooldownBars         = 5;        // 定义新触及的冷却K线数
 extern bool   RequireMomentumOnBreak = true;     // 失效确认是否需要动能K线
 extern double BreakMomentumATR       = 1.5;      // 动能K线实体需大于N倍ATR
-extern bool   RemoveInvalidOB        = true;     // 是否直接移除失效的OB [v1.71默认开:隐藏Invalid降噪]
+extern bool   RemoveInvalidOB        = false;    // 是否直接移除失效的OB
 extern bool   ShowOBLifecycleInfo   = false;    // [高级/调试] 显示OB生命周期详细信息
 
 // --- G2. OB/FVG 质量评分参数 (新增) ---
 extern bool   EnableOBFVGConfluence    = true;   // 启用OB/FVG同向重叠评分
 extern double MinOBFVGOverlapRatio     = 0.20;   // 重叠比例达此值时额外加分
 extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A/B/C/D/X]
-extern bool   HideLowQualityOB         = true;   // 隐藏低于阈值的低质量OB [v1.71默认开]
-extern double MinVisibleOBQualityScore = 0.55;   // 可见性阈值[v1.71=0.55:留Fresh+Tested,隐Weakened/Broken/Invalid]
+extern bool   HideLowQualityOB         = false;  // 隐藏低于阈值的低质量OB
+extern double MinVisibleOBQualityScore = 0.20;   // HideLowQualityOB=true时的可见性阈值
 
 // --- G3. FVG 标准对齐参数 (v1.71 新增) ---
 extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
@@ -1708,8 +1708,7 @@ int OnCalculate(const int rates_total,
             if (i >= 2) IdentifyFVG(i, open, high, low, close);
 
             // 识别Order Blocks (分析当前位置及历史K线模式)
-            // [v1.71] OB 改为结构突破事件驱动,移到结构最终化之后(见 IdentifyOrderBlocksFromStructure)
-            // if (i >= 5) IdentifyOrderBlocks(i, open, high, low, close);
+            if (i >= 5) IdentifyOrderBlocks(i, open, high, low, close);
 
             // 更新POI区域状态 (检查当前K线是否触及历史POI)
             UpdatePOIStatus(i, high, low, close);
@@ -1739,12 +1738,6 @@ int OnCalculate(const int rates_total,
             // 注意：分型标记绘制移到DrawGraphicalObjects之后，避免被清除
         }
         // --- 摆点后置过滤结束 ---
-
-        // [v1.71] 结构最终确定后,基于突破事件生成OB,并回放生命周期(结构OB在主循环后创建)
-        IdentifyOrderBlocksFromStructure(open, high, low, close);
-        for(int ob_i = limit; ob_i >= 0; ob_i--) {
-            UpdatePOIStatus(ob_i, high, low, close);
-        }
 
         // V1.62：后置裁剪，确保只保留每种类型最新的N个（删除超出限制的旧对象）
         TrimStructureZonesToNewest();
@@ -2677,53 +2670,6 @@ void IdentifyOrderBlocks(int current_bar, const double &open[], const double &hi
     }
 }
 
-//+------------------------------------------------------------------+
-//| 结构驱动的OB识别(v1.71):遍历最终结构突破事件回溯生成OB           |
-//| 多头突破→突破bar前最近一根阴线;空头突破→最近一根阳线;5根窗口     |
-//+------------------------------------------------------------------+
-void IdentifyOrderBlocksFromStructure(const double &open[], const double &high[],
-                                      const double &low[], const double &close[])
-{
-    int total = ArraySize(close);
-    for(int s = 0; s < structure_count; s++) {
-        int   brk_bar    = structure_zones[s].start_bar;   // 突破发生的bar
-        bool  is_bullish = structure_zones[s].is_bullish;  // 突破方向
-        if(brk_bar < 0 || brk_bar >= total) continue;
-
-        // [v1.71修复] OB在突破之前(时间更早=更高index)。从brk_bar向更旧方向搜索,
-        // 跳过同向冲击K线,取第一根反向K线作为OB。窗口放宽以容纳多根冲击腿。
-        int hi = MathMin(brk_bar + 10, total - 1);
-        if(is_bullish) {
-            // 多头突破:找突破前(更旧)最近一根阴线作为看涨OB
-            for(int i = brk_bar + 1; i <= hi; i++) {
-                if(close[i] < open[i]) {
-                    if(!OBExistsAtBar(i)) AddPOIZone(i, high[i], low[i], true, 1);
-                    break;
-                }
-            }
-        } else {
-            // 空头突破:找突破前(更旧)最近一根阳线作为看跌OB
-            for(int i = brk_bar + 1; i <= hi; i++) {
-                if(close[i] > open[i]) {
-                    if(!OBExistsAtBar(i)) AddPOIZone(i, high[i], low[i], false, 1);
-                    break;
-                }
-            }
-        }
-    }
-}
-
-//+------------------------------------------------------------------+
-//| 去重辅助:指定锚点bar上是否已存在OB [v1.71]                        |
-//+------------------------------------------------------------------+
-bool OBExistsAtBar(int bar)
-{
-    for(int k = 0; k < poi_count; k++) {
-        if(poi_zones[k].poi_type == 1 && poi_zones[k].start_bar == bar) return true;
-    }
-    return false;
-}
-
 
 
 //+------------------------------------------------------------------+
@@ -3010,8 +2956,6 @@ void UpdatePOIStatus(int current_bar, const double &high[], const double &low[],
 void ProcessFVGStatus(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].is_mitigated) return;
-    // [v1.71修复] 只处理形成之后(更新)的bar:MT4中更新=更小index;否则全量回放会用“形成前的老bar”误判为已填充
-    if(current_bar >= poi_zones[index].start_bar) return;
 
     double top    = poi_zones[index].top_price;
     double bottom = poi_zones[index].bottom_price;
@@ -3081,69 +3025,68 @@ void ProcessOBTraditional(int index, int current_bar, const double &high[], cons
 void ProcessOBLifecycle(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].status == 4) return; // 已失效，跳过
-    // [v1.71修复] 只处理形成之后(更新)的bar:避免全量回放用“形成前的老bar”误判触及/击穿
-    if(current_bar >= poi_zones[index].start_bar) return;
-
-    bool price_in_zone = (low[current_bar] <= poi_zones[index].top_price &&
+    
+    bool price_in_zone = (low[current_bar] <= poi_zones[index].top_price && 
                          high[current_bar] >= poi_zones[index].bottom_price);
     
     bool bullish_break = false, bearish_break = false;
     double momentum = 0.0;
-
-    // [v1.71] 失效采用标准影线口径:多头OB影线跌破底部 / 空头OB影线突破顶部(对齐 chart.html mitigation)
+    
+    // 计算突破情况和动能
     if(poi_zones[index].is_bullish) {
-        if(low[current_bar] < poi_zones[index].bottom_price) {          // 影线击穿底部=反向破坏(失效方向)
-            bearish_break = true;
-            momentum = CalculateBarMomentum(current_bar, high, low, close);
-        } else if(close[current_bar] > poi_zones[index].top_price) {    // 收盘突破顶部=向上延续(非失效)
+        // 多头OB：检查是否收盘突破上方或下方
+        if(close[current_bar] > poi_zones[index].top_price) {
             bullish_break = true;
+            momentum = CalculateBarMomentum(current_bar, high, low, close);
+        } else if(close[current_bar] < poi_zones[index].bottom_price) {
+            bearish_break = true;
             momentum = CalculateBarMomentum(current_bar, high, low, close);
         }
     } else {
-        if(high[current_bar] > poi_zones[index].top_price) {            // 影线突破顶部=反向破坏(失效方向)
-            bullish_break = true;
-            momentum = CalculateBarMomentum(current_bar, high, low, close);
-        } else if(close[current_bar] < poi_zones[index].bottom_price) { // 收盘跌破底部=向下延续(非失效)
+        // 空头OB：检查是否收盘突破上方或下方
+        if(close[current_bar] < poi_zones[index].bottom_price) {
             bearish_break = true;
+            momentum = CalculateBarMomentum(current_bar, high, low, close);
+        } else if(close[current_bar] > poi_zones[index].top_price) {
+            bullish_break = true;
             momentum = CalculateBarMomentum(current_bar, high, low, close);
         }
     }
     
     // 状态机逻辑
     switch(poi_zones[index].status) {
-        case 0: // Fresh -> Broken_Once(影线击穿优先) 或 -> Tested
-            if((poi_zones[index].is_bullish && bearish_break) ||
-               (!poi_zones[index].is_bullish && bullish_break)) {
-                // [v1.71] 影线击穿远端优先于触及:对齐标准mitigation
-                poi_zones[index].status = 3;
-                poi_zones[index].first_break_bar = current_bar;
-                poi_zones[index].break_momentum = momentum;
-                g_data_version++;
-                LogOBLifecycleEvent(index, current_bar, "影线击穿远端", "Fresh -> Broken_Once");
-            } else if(price_in_zone && IsValidTouch(index, current_bar)) {
+        case 0: // Fresh -> Tested 或 (未触及即被击穿) -> Broken_Once
+            if(price_in_zone && IsValidTouch(index, current_bar)) {
                 poi_zones[index].status = 1;
                 poi_zones[index].touch_count = 1;
                 poi_zones[index].last_touch_bar = current_bar;
                 g_data_version++;
                 LogOBLifecycleEvent(index, current_bar, "首次触及", "Fresh -> Tested");
-            }
-            break;
-
-        case 1: // Tested -> Broken_Once(影线击穿优先) 或 -> Weakened
-        case 2: // Weakened -> Broken_Once
-            if((poi_zones[index].is_bullish && bearish_break) || (!poi_zones[index].is_bullish && bullish_break)) {
-                // [v1.71] 影线击穿远端优先于触及
+            } else if((poi_zones[index].is_bullish && bearish_break) ||
+                      (!poi_zones[index].is_bullish && bullish_break)) {
+                // 未登记任何有效触及即被反向收盘击穿：直接进入观察状态
                 poi_zones[index].status = 3;
                 poi_zones[index].first_break_bar = current_bar;
                 poi_zones[index].break_momentum = momentum;
                 g_data_version++;
-                LogOBLifecycleEvent(index, current_bar, "影线击穿", "-> Broken_Once");
-            } else if(price_in_zone && IsValidTouch(index, current_bar)) {
+                LogOBLifecycleEvent(index, current_bar, "未触及即被击穿", "Fresh -> Broken_Once");
+            }
+            break;
+            
+        case 1: // Tested -> Weakened 或 -> Broken_Once
+        case 2: // Weakened -> Broken_Once
+            if(price_in_zone && IsValidTouch(index, current_bar)) {
                 poi_zones[index].status = 2;
                 poi_zones[index].touch_count++;
                 poi_zones[index].last_touch_bar = current_bar;
                 g_data_version++;
                 LogOBLifecycleEvent(index, current_bar, "再次触及", "-> Weakened");
+            } else if((poi_zones[index].is_bullish && bearish_break) || (!poi_zones[index].is_bullish && bullish_break)) {
+                poi_zones[index].status = 3;
+                poi_zones[index].first_break_bar = current_bar;
+                poi_zones[index].break_momentum = momentum;
+                g_data_version++;
+                LogOBLifecycleEvent(index, current_bar, "首次突破", "-> Broken_Once");
             }
             break;
             
@@ -3864,9 +3807,7 @@ void DrawPOIZone(int zone_index, string type_prefix, color zone_color, string la
     
     // 添加标签
     string label_name = "SMC_ZoneLabel_" + type_prefix + "_" + IntegerToString(zone.start_bar);
-    // [v1.71] 按区域索引轻微垂直错位,降低同价位标签重叠
-    double zh = (zone.top_price - zone.bottom_price);
-    double label_price = zone.top_price + zh * (0.05 + 0.06 * (zone_index % 3));
+    double label_price = zone.top_price + (zone.top_price - zone.bottom_price) * 0.05;
     
     if(ObjectCreate(0, label_name, OBJ_TEXT, 0, start_time, label_price))
     {
