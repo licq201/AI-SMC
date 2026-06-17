@@ -116,6 +116,10 @@ extern bool   EnableOBFVGConfluence    = true;   // 启用OB/FVG同向重叠评�
 extern double MinOBFVGOverlapRatio     = 0.20;   // 重叠比例达此值时额外加分
 extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A/B/C/D/X]
 
+// --- G4. 区域显示形式 (v1.72) ---
+extern int    ZoneDisplayStyle  = 1;     // OB/FVG区域:0=填充 1=边框(默认) 2=上下边线
+extern bool   ShowZoneRightTag  = true;  // 右侧空白区画质量色标(仅边框/上下线样式)
+
 // --- G3. FVG 标准对齐参数 (v1.71 新增) ---
 extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
 extern bool   FVG_JoinConsecutive    = true;  // 合并相邻同向、价格重叠的FVG
@@ -2817,6 +2821,11 @@ void RemoveOldestPOIZoneByType(int target_type)
 
     ObjectDelete(obj_name);
     ObjectDelete(label_name);
+    // [v1.72] 一并删除衍生对象(边框/上下线/右侧色标)
+    ObjectDelete(obj_name + "_Border");
+    ObjectDelete(obj_name + "_T");
+    ObjectDelete(obj_name + "_B");
+    ObjectDelete(obj_name + "_Tag");
 
     // Print("SMC: 删除最旧的", type_prefix, "区域 at bar ", poi_zones[oldest_index].start_bar);
 
@@ -3913,26 +3922,61 @@ void DrawPOIZone(int zone_index, string type_prefix, color zone_color, string la
 
     datetime end_time = TimeCurrent() + PeriodSeconds() * 100;
 
-    // 创建矩形
-    if(ObjectCreate(0, obj_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price))
-    {
-        ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
-        ObjectSetInteger(0, obj_name, OBJPROP_BACK, true);
-        ObjectSetInteger(0, obj_name, OBJPROP_FILL, true);
-        ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);  // 增加边框宽度
-        ObjectSetInteger(0, obj_name, OBJPROP_STYLE, STYLE_SOLID);
+    // [v1.72] 区域显示形式:0填充 / 1边框 / 2上下线
+    if(ZoneDisplayStyle == 2) {
+        // 上下两条水平射线
+        string top_name = obj_name + "_T";
+        string bot_name = obj_name + "_B";
+        if(ObjectCreate(0, top_name, OBJ_TREND, 0, start_time, zone.top_price, end_time, zone.top_price)) {
+            ObjectSetInteger(0, top_name, OBJPROP_COLOR, zone_color);
+            ObjectSetInteger(0, top_name, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, top_name, OBJPROP_STYLE, STYLE_SOLID);
+            ObjectSetInteger(0, top_name, OBJPROP_RAY_RIGHT, true);
+            ObjectSetInteger(0, top_name, OBJPROP_BACK, true);
+        }
+        if(ObjectCreate(0, bot_name, OBJ_TREND, 0, start_time, zone.bottom_price, end_time, zone.bottom_price)) {
+            ObjectSetInteger(0, bot_name, OBJPROP_COLOR, zone_color);
+            ObjectSetInteger(0, bot_name, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, bot_name, OBJPROP_STYLE, STYLE_SOLID);
+            ObjectSetInteger(0, bot_name, OBJPROP_RAY_RIGHT, true);
+            ObjectSetInteger(0, bot_name, OBJPROP_BACK, true);
+        }
+    } else {
+        // 矩形:style0=填充 / style1=边框
+        bool do_fill = (ZoneDisplayStyle == 0);
+        if(ObjectCreate(0, obj_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price))
+        {
+            ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
+            ObjectSetInteger(0, obj_name, OBJPROP_BACK, do_fill);          // 填充置后/边框置前
+            ObjectSetInteger(0, obj_name, OBJPROP_FILL, do_fill);
+            ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, do_fill ? 2 : 1);
+            ObjectSetInteger(0, obj_name, OBJPROP_STYLE, STYLE_SOLID);
 
-        // 为OB区域添加更强的边框以提高可见性
-        if(StringFind(obj_name, "OB") >= 0) {
-            // 创建边框对象增强可见性
-            string border_name = obj_name + "_Border";
-            if(ObjectCreate(0, border_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price)) {
-                ObjectSetInteger(0, border_name, OBJPROP_COLOR, zone_color);
-                ObjectSetInteger(0, border_name, OBJPROP_BACK, false);
-                ObjectSetInteger(0, border_name, OBJPROP_FILL, false);
-                ObjectSetInteger(0, border_name, OBJPROP_WIDTH, 3);
-                ObjectSetInteger(0, border_name, OBJPROP_STYLE, STYLE_SOLID);
+            // 仅填充样式下为OB加强边框
+            if(do_fill && StringFind(obj_name, "OB") >= 0) {
+                string border_name = obj_name + "_Border";
+                if(ObjectCreate(0, border_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price)) {
+                    ObjectSetInteger(0, border_name, OBJPROP_COLOR, zone_color);
+                    ObjectSetInteger(0, border_name, OBJPROP_BACK, false);
+                    ObjectSetInteger(0, border_name, OBJPROP_FILL, false);
+                    ObjectSetInteger(0, border_name, OBJPROP_WIDTH, 3);
+                    ObjectSetInteger(0, border_name, OBJPROP_STYLE, STYLE_SOLID);
+                }
             }
+        }
+    }
+
+    // [v1.72] 右侧质量色标:非填充样式下,在最后K线右侧空白区画小实色块(颜色=质量色)
+    if(ShowZoneRightTag && ZoneDisplayStyle != 0) {
+        string tag_name = obj_name + "_Tag";
+        datetime tag_start = TimeCurrent() + PeriodSeconds() * 1;
+        datetime tag_end   = TimeCurrent() + PeriodSeconds() * 4;
+        if(ObjectCreate(0, tag_name, OBJ_RECTANGLE, 0, tag_start, zone.bottom_price, tag_end, zone.top_price)) {
+            ObjectSetInteger(0, tag_name, OBJPROP_COLOR, zone_color);
+            ObjectSetInteger(0, tag_name, OBJPROP_BACK, false);
+            ObjectSetInteger(0, tag_name, OBJPROP_FILL, true);
+            ObjectSetInteger(0, tag_name, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, tag_name, OBJPROP_STYLE, STYLE_SOLID);
         }
     }
 
