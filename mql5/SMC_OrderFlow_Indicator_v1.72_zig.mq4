@@ -172,7 +172,7 @@ extern bool   EnableZigZagFilter   = true;  // 启用ZigZag摆点过滤(缠论�
 extern int    ZigZag_Depth         = 12;    // ZigZag深度(最小回溯K线数)
 extern int    ZigZag_Deviation     = 5;     // ZigZag偏差(点数)
 extern int    ZigZag_Backstep      = 3;     // ZigZag回溯步数
-extern int    ZigZag_MatchWindow   = 3;     // 摆点与ZigZag转折点匹配的bar容差窗口
+extern int    ZigZag_MatchWindow   = 10;    // 摆点与ZigZag转折点匹配的bar容差窗口 [v1.72:配合pivot中心匹配放宽]
 
 //+------------------------------------------------------------------+
 //| 时间限制保护机制                                                  |
@@ -4799,39 +4799,50 @@ void FilterSwingPointsByZigZag()
         return; // 降级保护
     }
 
-    // 转折点占用标记(严格一对一匹配)
-    bool pivot_used[];
-    ArrayResize(pivot_used, pivot_count);
-    for(int p = 0; p < pivot_count; p++) pivot_used[p] = false;
+    // [v1.72修复] 以pivot为中心匹配:ZigZag骨架为真相,每个转折点认领离它最近的同类型未用摆点。
+    // 旧"以摆点为中心+严格一对一"在摆点bar与pivot bar错位时:窗口小漏真实极点(如最低摆点),
+    // 窗口大则被较近摆点抢占而漏其它转折点(如最高摆点)。pivot中心保证每个转折点必被代表。
+    bool swing_used[];
+    ArrayResize(swing_used, swing_count);
+    for(int s = 0; s < swing_count; s++) swing_used[s] = false;
 
+    bool keep[];
+    ArrayResize(keep, swing_count);
+    for(int s = 0; s < swing_count; s++) keep[s] = false;
+
+    // 每个pivot(时间旧->新)认领最近的同类型未用摆点(bar距离<=窗口)
+    for(int p = 0; p < pivot_count; p++)
+    {
+        int best_i    = -1;
+        int best_dist = ZigZag_MatchWindow + 1;
+        for(int i = 0; i < swing_count; i++)
+        {
+            if(swing_used[i]) continue;
+            if(swing_points[i].is_high != pivots[p].is_high) continue;
+            int dist = MathAbs(swing_points[i].bar_index - pivots[p].bar_index);
+            if(dist <= ZigZag_MatchWindow && dist < best_dist) {
+                best_dist = dist;
+                best_i    = i;
+            }
+        }
+        if(best_i >= 0) {
+            swing_used[best_i] = true;
+            keep[best_i]       = true;
+        } else if(EnableDebugMode) {
+            Print("FilterSwingPointsByZigZag: pivot无匹配摆点 ",
+                  (pivots[p].is_high ? "高" : "低"),
+                  " bar=", pivots[p].bar_index, " price=", pivots[p].price);
+        }
+    }
+
+    // 按时间(索引)顺序收集保留的摆点(继承全部元数据)
     SwingPoint filtered[];
     ArrayResize(filtered, swing_count);
     int filtered_count = 0;
-
-    // 遍历原始摆点(保持原时间顺序)，保留与未占用转折点同类型且bar距离<=窗口的最近者
-    for(int i = 0; i < swing_count; i++)
-    {
-        int best_p    = -1;
-        int best_dist = ZigZag_MatchWindow + 1;
-        for(int p = 0; p < pivot_count; p++)
-        {
-            if(pivot_used[p]) continue;
-            if(pivots[p].is_high != swing_points[i].is_high) continue;
-            int dist = MathAbs(pivots[p].bar_index - swing_points[i].bar_index);
-            if(dist <= ZigZag_MatchWindow && dist < best_dist) {
-                best_dist = dist;
-                best_p    = p;
-            }
-        }
-        if(best_p >= 0) {
-            pivot_used[best_p] = true;
-            filtered[filtered_count] = swing_points[i]; // 继承全部元数据
+    for(int i = 0; i < swing_count; i++) {
+        if(keep[i]) {
+            filtered[filtered_count] = swing_points[i];
             filtered_count++;
-        } else if(EnableDebugMode) {
-            Print("FilterSwingPointsByZigZag: 剔除未确认摆点 ",
-                  (swing_points[i].is_high ? "高" : "低"),
-                  " bar=", swing_points[i].bar_index,
-                  " price=", swing_points[i].price);
         }
     }
 
