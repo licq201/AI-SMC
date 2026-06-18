@@ -4006,6 +4006,22 @@ void DrawSwingConnections()
     // V1.55 优化：清除旧的ZigZag连线和标签，防止重影（特别是当摆点被虚拟点替换时）
     ObjectsDeleteAll(0, "SMC_ZigZag");
 
+    // [诊断] 转储最终参与连线的摆点集合(含分类),用于定位"最后一笔停在A/跳过A"
+    if(EnableDebugMode) {
+        Print("=== DUMP final swing set: swing_count=", swing_count, " ===");
+        for(int d = 0; d < swing_count; d++) {
+            string t = "未分类(-1) [SKIP连线]";
+            switch(swing_points[d].structure_type) {
+                case 0: t="HH"; break; case 1: t="HL"; break;
+                case 2: t="LH"; break; case 3: t="LL"; break;
+            }
+            Print("  sw[", d, "] bar=", swing_points[d].bar_index,
+                  " price=", DoubleToString(swing_points[d].price, 2),
+                  (swing_points[d].is_high ? " 高" : " 低"), " type=", t);
+        }
+        Print("=== END DUMP ===");
+    }
+
     // 创建按时间排序的摆点数组
     struct SwingTimePoint {
         int bar_index;
