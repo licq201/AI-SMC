@@ -413,7 +413,6 @@ void FilterSwingPointsByChan();
 int  CalculateZigZagPivots(int scan_limit, ZigZagPivot &pivots[]);
 void FilterSwingPointsByZigZag();
 SwingPoint MakeSwingPointFromZigZagPivot(ZigZagPivot &pivot);
-SwingPoint MakeSwingPointFromChanFractal(FractalPoint &fractal);
 int  FindProcessedBarIndex(int raw_bar, bool is_high);  // V1.58：查找摆点对应的处理后K线索引
 bool CheckMA21FilterChan(int bar_index, double price, bool is_high, int force_mode = -1); // V1.59：缠论步骤内MA21过滤(Mode0/1/2)，force_mode=-1时使用全局MA21FilterMode
 void DrawFractalMarker(const FractalPoint& fractal);
@@ -4624,22 +4623,6 @@ bool ValidateSwingPointByChan(int bar_index, double price, bool is_high, double 
 }
 
 //+------------------------------------------------------------------+
-//| 将未匹配到原始 swing 的缠论分型合成为 SwingPoint                  |
-//+------------------------------------------------------------------+
-SwingPoint MakeSwingPointFromChanFractal(FractalPoint &fractal)
-{
-    SwingPoint synthetic_from_fractal;
-    synthetic_from_fractal.bar_index = fractal.original_bar;
-    synthetic_from_fractal.price = fractal.price;
-    synthetic_from_fractal.is_high = fractal.is_top;
-    synthetic_from_fractal.is_broken = false;
-    synthetic_from_fractal.structure_type = -1;
-    synthetic_from_fractal.is_extreme = false;
-    synthetic_from_fractal.processed_index = fractal.bar_index;
-    return synthetic_from_fractal;
-}
-
-//+------------------------------------------------------------------+
 //| V1.69：V1.64「极短反向」噪声判定（方案A）                          |
 //| 仅当回抽未突破栈内最近同向极值时，才允许丢弃 current（保留原5210类语义）；|
 //| 若 current 为新低(相对最近低点)或新高(相对最近高点)，视为结构延伸，走回溯。|
@@ -4975,7 +4958,7 @@ void FilterSwingPointsByChan()
 
     // 创建临时数组存储过滤后的摆点
     SwingPoint filtered_swings[];
-    ArrayResize(filtered_swings, swing_count + g_chan_fractal_count);
+    ArrayResize(filtered_swings, swing_count);
     int filtered_count = 0;
 
     // 第一遍：分型验证 + MA21均线过滤（缠论步骤内，包含处理之后）
@@ -5008,43 +4991,6 @@ void FilterSwingPointsByChan()
 
         filtered_swings[filtered_count] = sp;
         filtered_count++;
-    }
-
-    int unmatched_fractal_count = 0;
-    int fractal_match_tolerance = MathMax(3, StructureLookback + 2);
-    for(int f = 0; f < g_chan_fractal_count; f++) {
-        FractalPoint fractal = g_chan_fractals[f];
-        bool represented = false;
-        for(int s = 0; s < filtered_count; s++) {
-            if(filtered_swings[s].is_high != fractal.is_top) continue;
-            if(MathAbs(filtered_swings[s].bar_index - fractal.original_bar) <= fractal_match_tolerance) {
-                represented = true;
-                break;
-            }
-        }
-
-        if(!represented) {
-            filtered_swings[filtered_count] = MakeSwingPointFromChanFractal(g_chan_fractals[f]);
-            filtered_count++;
-            unmatched_fractal_count++;
-            if(EnableDebugMode) {
-                Print("FilterSwingPointsByChan: 合成分型摆点 ",
-                      (fractal.is_top ? "高" : "低"),
-                      " original_bar=", fractal.original_bar,
-                      " price=", DoubleToString(fractal.price, 2));
-            }
-        }
-    }
-
-    // 合成分型可能来自原始 swing 数组之外，重新按时间旧->新排序。
-    for(int i = 0; i < filtered_count - 1; i++) {
-        for(int j = i + 1; j < filtered_count; j++) {
-            if(filtered_swings[i].bar_index < filtered_swings[j].bar_index) {
-                SwingPoint tmp = filtered_swings[i];
-                filtered_swings[i] = filtered_swings[j];
-                filtered_swings[j] = tmp;
-            }
-        }
     }
 
     if(EnableDebugMode) Print("FilterSwingPointsByChan: 分型+MA21过滤后剩余=", filtered_count);

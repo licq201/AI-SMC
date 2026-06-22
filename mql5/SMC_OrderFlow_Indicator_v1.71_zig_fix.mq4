@@ -5,12 +5,10 @@
 //+------------------------------------------------------------------+
 #property copyright "SMC Trading System"
 #property link      "https://bbs.sunwy.com"
-#property version   "1.74"
+#property version   "1.71"
 #property description "SMC_OrderFlow_Indicator, 专业SMC订单流市场结构分析指标 - BOS/CHOCH优化版"
 #property description "author:博思客 V:2030988"
-#property description "v1.74: 修复ZigZag pivot无匹配原始摆点时被丢弃导致极端低点缺失"
-#property description "v1.72: BOS/CHoCH对齐标准—CHoCH不再强制FVG;BOS虚线/CHoCH实线对齐chart.html"
-#property description "v1.71: FVG对齐标准(放宽+部分填充%+合并连续);OB主循环生成+结构加分(+S)+智能过滤(只留+S或高等级)"
+#property description "v1.71: FVG/OB对齐标准(Python smc_core)—FVG放宽+部分填充+合并连续;OB结构突破驱动+影线失效口径"
 #property description "v1.70: 新增ZigZag摆点前置过滤(缠论之前,严格交集,开关EnableZigZagFilter默认true)"
 #property description "v1.69: 缠论V1.64极短笔收窄(方案A)—新低/新高延伸时不丢current，避免真LL被吞后误连4-7"
 #property description "v1.67: 回迁缠论不成笔过滤为chan_1逻辑，修复LH/HL/LH/LL/HH误连2-5成笔"
@@ -26,8 +24,8 @@
 // --- A. 核心逻辑参数 (EA调用所需) ---
 extern int    StructureLookback   = 5;     // 结构点识别强度(左右各N根K线)
 extern int    MaxBarsToCalculate  = 1000;  // 最大计算K线数量(性能优化,0=全部)
-extern int    MaxFVGZones         = 15;     // 计算并存储的FVG区域的最大数量
-extern int    MaxOBZones          = 15;     // 计算并存储的OB区域的最大数量
+extern int    MaxFVGZones         = 5;     // 计算并存储的FVG区域的最大数量
+extern int    MaxOBZones          = 5;     // 计算并存储的OB区域的最大数量
 extern int    MaxBOSZones         = 2;     // 计算并存储的BOS区域的最大数量
 extern int    MaxCHOCHZones       = 2;     // 计算并存储的CHoCH区域的最大数量
 
@@ -83,7 +81,7 @@ extern int    EqualTolerancePoints = 2;      // 等高/等低容差(点)，视�
 extern int    TrendWindowStructures= 6;      // 趋势确认窗口：最近结构数量(4~6)
 extern bool   RequireDisplacement  = true;   // 触发需位移（实体/全幅 & 全幅/ATR）
 extern bool   RequireFVG_BOS       = false;  // BOS是否要求伴随FVG
-extern bool   RequireFVG_CHOCH     = false;  // CHoCH是否要求伴随FVG [v1.72对齐标准:默认关]
+extern bool   RequireFVG_CHOCH     = true;   // CHOCH是否要求伴随FVG（更严格）
 
 // --- E. 缠论MA21均线参数 ---
 extern bool   EnableMA21Filter    = true;        // 启用MA21均线过滤（在缠论步骤中执行）
@@ -108,20 +106,15 @@ extern bool   EnableOBLifecycle      = true;      // 启用OB生命周期机制(
 extern int    OBCooldownBars         = 5;        // 定义新触及的冷却K线数
 extern bool   RequireMomentumOnBreak = true;     // 失效确认是否需要动能K线
 extern double BreakMomentumATR       = 1.5;      // 动能K线实体需大于N倍ATR
-// OB 显示等级:0=关键(A级/+S) 1=标准(默认) 2=扩展(含走弱) 3=全部(含失效,历史分析)
-extern int    OBDisplayLevel         = 1;        // [v1.72] OB显隐主开关(取代 HideLowQualityOB/MinVisibleOBQualityScore/RemoveInvalidOB)
+extern bool   RemoveInvalidOB        = false;    // 是否直接移除失效的OB
 extern bool   ShowOBLifecycleInfo   = false;    // [高级/调试] 显示OB生命周期详细信息
 
 // --- G2. OB/FVG 质量评分参数 (新增) ---
 extern bool   EnableOBFVGConfluence    = true;   // 启用OB/FVG同向重叠评分
 extern double MinOBFVGOverlapRatio     = 0.20;   // 重叠比例达此值时额外加分
 extern bool   ShowOBQualityGrade       = true;   // OB标签显示质量等级[A/B/C/D/X]
-
-// --- G4. 区域显示形式 (v1.72) ---
-extern int    ZoneDisplayStyle  = 1;     // OB/FVG区域:0=填充 1=边框(默认) 2=上下边线
-extern bool   ShowZoneRightTag  = true;  // 右侧空白区画质量色标(仅边框/上下线样式)
-extern int    ZoneRightTagOffsetBars = 25;  // 色标距最后K线的bar数(向右偏移,默认25)
-extern int    ZoneRightTagWidthBars  = 3;   // 色标宽度(bar数)
+extern bool   HideLowQualityOB         = false;  // 隐藏低于阈值的低质量OB
+extern double MinVisibleOBQualityScore = 0.20;   // HideLowQualityOB=true时的可见性阈值
 
 // --- G3. FVG 标准对齐参数 (v1.71 新增) ---
 extern double FVGMitigationThreshold = 1.0;   // FVG填充达此比例即视为已填充并隐藏(0.5=半填充口径)
@@ -173,7 +166,7 @@ extern bool   EnableZigZagFilter   = true;  // 启用ZigZag摆点过滤(缠论�
 extern int    ZigZag_Depth         = 12;    // ZigZag深度(最小回溯K线数)
 extern int    ZigZag_Deviation     = 5;     // ZigZag偏差(点数)
 extern int    ZigZag_Backstep      = 3;     // ZigZag回溯步数
-extern int    ZigZag_MatchWindow   = 10;    // 摆点与ZigZag转折点匹配的bar容差窗口 [v1.72:配合pivot中心匹配放宽]
+extern int    ZigZag_MatchWindow   = 3;     // 摆点与ZigZag转折点匹配的bar容差窗口
 
 //+------------------------------------------------------------------+
 //| 时间限制保护机制                                                  |
@@ -205,7 +198,7 @@ struct POI_Zone {
     string zone_id;
     bool is_drawn;              // 标记是否已经绘制
     int trigger_count;          // 已触发次数（用于节流）
-
+    
     // --- OB生命周期新增字段 ---
     int touch_count;            // OB有效触及次数
     int status;                 // OB当前状态: 0=Fresh, 1=Tested, 2=Weakened, 3=Broken_Once, 4=Invalid
@@ -220,7 +213,6 @@ struct POI_Zone {
     double quality_score;       // OB质量分 0.0-1.0
     string quality_grade;       // 等级 A/B/C/D/X
     double fill_pct;            // FVG累计填充比例 0.0-1.0(OB不使用) [v1.71]
-    bool   has_structure_confluence; // OB是否紧邻同向结构突破(BOS/CHoCH) [v1.71]
 };
 
 struct Structure_Zone {
@@ -347,9 +339,8 @@ datetime g_last_signal_time = 0;       // 最近一次发出警报的时间（�
 
 // 市场结构状态跟踪
 int g_market_trend = 0;                // 当前主趋势：1=上升，-1=下降，0=未确定
-int g_smc_bias = 0;                     // [SMC重写] SMC结构私有bias:0中性/1上升/-1下降(不影响g_market_trend)
 int g_last_hh_index = -1;              // 最近的HH索引
-int g_last_hl_index = -1;              // 最近的HL索引
+int g_last_hl_index = -1;              // 最近的HL索引  
 int g_last_lh_index = -1;              // 最近的LH索引
 int g_last_ll_index = -1;              // 最近的LL索引
 
@@ -412,8 +403,6 @@ void FilterSwingPointsByChan();
 // V1.70 ZigZag 摆点前置过滤
 int  CalculateZigZagPivots(int scan_limit, ZigZagPivot &pivots[]);
 void FilterSwingPointsByZigZag();
-SwingPoint MakeSwingPointFromZigZagPivot(ZigZagPivot &pivot);
-SwingPoint MakeSwingPointFromChanFractal(FractalPoint &fractal);
 int  FindProcessedBarIndex(int raw_bar, bool is_high);  // V1.58：查找摆点对应的处理后K线索引
 bool CheckMA21FilterChan(int bar_index, double price, bool is_high, int force_mode = -1); // V1.59：缠论步骤内MA21过滤(Mode0/1/2)，force_mode=-1时使用全局MA21FilterMode
 void DrawFractalMarker(const FractalPoint& fractal);
@@ -443,22 +432,22 @@ bool ChanV64_ShouldDiscardOppositeShortNoise(SwingPoint &last_sp, SwingPoint &cu
 bool IsSwingHigh(int bar, const double &high[])
 {
     if(bar < StructureLookback || bar >= Bars - StructureLookback) return false;
-
+    
     // 额外的边界检查
     if(bar + StructureLookback >= ArraySize(high) || bar - StructureLookback < 0) return false;
-
+    
     double current_high = high[bar];
-
+    
     // 检查左侧
     for(int i = 1; i <= StructureLookback; i++) {
         if(bar + i >= ArraySize(high) || high[bar + i] >= current_high) return false;
     }
-
+    
     // 检查右侧
     for(int i = 1; i <= StructureLookback; i++) {
         if(bar - i < 0 || high[bar - i] >= current_high) return false;
     }
-
+    
     return true;
 }
 
@@ -468,22 +457,22 @@ bool IsSwingHigh(int bar, const double &high[])
 bool IsSwingLow(int bar, const double &low[])
 {
     if(bar < StructureLookback || bar >= Bars - StructureLookback) return false;
-
+    
     // 额外的边界检查
     if(bar + StructureLookback >= ArraySize(low) || bar - StructureLookback < 0) return false;
-
+    
     double current_low = low[bar];
-
+    
     // 检查左侧
     for(int i = 1; i <= StructureLookback; i++) {
         if(bar + i >= ArraySize(low) || low[bar + i] <= current_low) return false;
     }
-
+    
     // 检查右侧
     for(int i = 1; i <= StructureLookback; i++) {
         if(bar - i < 0 || low[bar - i] <= current_low) return false;
     }
-
+    
     return true;
 }
 
@@ -493,14 +482,14 @@ bool IsSwingLow(int bar, const double &low[])
 void CalculateMA21(int rates_total, const double &high[], const double &low[], const double &close[], const double &open[])
 {
     if(!EnableMA21Filter) return;
-
+    
     // 确保有足够的数据计算MA21
     if(rates_total < MA21_Period) return;
-
+    
     // 根据MA21_AppliedPrice选择价格数组
     double price_array[];
     ArrayResize(price_array, rates_total);
-
+    
     for(int i = 0; i < rates_total; i++) {
         switch(MA21_AppliedPrice) {
             case PRICE_CLOSE:   price_array[i] = close[i]; break;
@@ -513,7 +502,7 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
             default: price_array[i] = close[i]; break;
         }
     }
-
+    
     // 计算MA21均线
     for(int i = 0; i < rates_total; i++) {
         if(i < MA21_Period - 1) {
@@ -523,7 +512,7 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
             }
             continue;
         }
-
+        
         double sum = 0.0;
         switch(MA21_Method) {
             case MODE_SMA: // 简单移动平均
@@ -539,7 +528,7 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
                     MA21_Buffer[i] = sum / MA21_Period;
                 }
                 break;
-
+                
             case MODE_EMA: // 指数移动平均
                 if(i == MA21_Period - 1) {
                     // 第一个EMA值使用SMA
@@ -565,7 +554,7 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
                     }
                 }
                 break;
-
+                
             case MODE_SMMA: // 平滑移动平均
                 if(i == MA21_Period - 1) {
                     // 第一个SMMA值使用SMA
@@ -587,7 +576,7 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
                     }
                 }
                 break;
-
+                
             case MODE_LWMA: // 线性加权移动平均
                 {
                     double weight_sum = 0.0;
@@ -613,7 +602,7 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
                     }
                 }
                 break;
-
+                
             default:
                 // 添加边界检查
                 if(i >= 0 && i < ArraySize(MA21_Buffer)) {
@@ -630,10 +619,10 @@ void CalculateMA21(int rates_total, const double &high[], const double &low[], c
 void CalculateMA21SingleBar(int bar, const double &high[], const double &low[], const double &close[], const double &open[])
 {
     if(bar >= ArraySize(MA21_Buffer) || bar < 0) return;
-
+    
     double price_array[];
     ArrayResize(price_array, ArraySize(close));
-
+    
     // 根据MA21_AppliedPrice选择价格数组
     switch(MA21_AppliedPrice) {
         case PRICE_CLOSE:
@@ -667,7 +656,7 @@ void CalculateMA21SingleBar(int bar, const double &high[], const double &low[], 
             ArrayCopy(price_array, close);
             break;
     }
-
+    
     // 计算MA21值
     switch(MA21_Method) {
         case MODE_SMA:
@@ -681,7 +670,7 @@ void CalculateMA21SingleBar(int bar, const double &high[], const double &low[], 
                 MA21_Buffer[bar] = sum / MA21_Period;
             }
             break;
-
+            
         case MODE_EMA:
             if(bar >= ArraySize(MA21_Buffer) - 1) {
                 MA21_Buffer[bar] = price_array[bar];
@@ -692,7 +681,7 @@ void CalculateMA21SingleBar(int bar, const double &high[], const double &low[], 
                 }
             }
             break;
-
+            
         case MODE_SMMA:
             if(bar >= ArraySize(MA21_Buffer) - 1) {
                 double sum = 0;
@@ -706,7 +695,7 @@ void CalculateMA21SingleBar(int bar, const double &high[], const double &low[], 
                 }
             }
             break;
-
+            
         case MODE_LWMA:
             if(bar >= MA21_Period - 1) {
                 double sum = 0;
@@ -841,7 +830,7 @@ void IdentifySwingPointsOriginal(int current_bar, const double &high[], const do
     if(IsSwingHigh(current_bar, high)) {
         AddSwingPoint(current_bar, high[current_bar], true);
     }
-
+    
     // 检查是否为Swing Low
     if(IsSwingLow(current_bar, low)) {
         AddSwingPoint(current_bar, low[current_bar], false);
@@ -864,11 +853,11 @@ void IdentifySwingPoints(int current_bar, const double &high[], const double &lo
 //+------------------------------------------------------------------+
 bool CheckAuthorization() {
     if(g_auth_checked) return g_is_authorized;
-
+    
     g_auth_checked = true;
     g_is_authorized = false;
     g_auth_failure_reason = "";
-
+    
     // 1. 检查模拟账户
     if(IsDemo()) {
         g_demo_account_detected = true;
@@ -877,14 +866,14 @@ bool CheckAuthorization() {
             return false;
         }
     }
-
+    
     // 2. 时间授权检查
     if(UseTimeAuth) {
         if(!CheckTimeAuthorization()) {
             return false;
         }
     }
-
+    
     // 3. 账号授权检查
     if(UseAccountNumberAuth) {
         // 检测账号是否为0（MT4启动时可能出现）
@@ -901,54 +890,54 @@ bool CheckAuthorization() {
                 return false;
             }
         }
-
+        
         if(!CheckAccountNumberAuth()) {
             return false;
         }
     }
-
+    
     // 4. 账户名授权检查
     if(UseAccountNameAuth) {
         if(!CheckAccountNameAuth()) {
             return false;
         }
     }
-
+    
     // 5. 经纪商授权检查
     if(UseBrokerAuth) {
         if(!CheckBrokerAuth()) {
             return false;
         }
     }
-
+    
     // 6. 硬件ID授权检查
     if(UseHardwareAuth) {
         if(!CheckHardwareAuth()) {
             return false;
         }
     }
-
+    
     // 7. 每日使用次数检查
     if(!CheckDailyUsage()) {
         return false;
     }
-
+    
     // 8. 加密验证
     if(EnableEncryption) {
         if(!CheckEncryptionAuth()) {
             return false;
         }
     }
-
+    
     g_is_authorized = true;
-
+    
     // 记录成功授权
     if(LogAuthAttempts) {
-        string log_msg = "授权成功 - 账号: " + IntegerToString(AccountNumber()) +
+        string log_msg = "授权成功 - 账号: " + IntegerToString(AccountNumber()) + 
                         " | 时间: " + TimeToString(TimeCurrent());
         Print("🔐 " + log_msg);
     }
-
+    
     return true;
 }
 
@@ -957,18 +946,18 @@ bool CheckAuthorization() {
 //+------------------------------------------------------------------+
 bool CheckTimeAuthorization() {
     datetime current_time = TimeCurrent();
-
+    
     // 检查是否在授权时间范围内
     if(current_time < AuthStartTime) {
         g_auth_failure_reason = "授权尚未开始，开始时间: " + TimeToString(AuthStartTime);
         return false;
     }
-
+    
     if(current_time > AuthEndTime) {
         g_auth_failure_reason = "授权已过期，过期时间: " + TimeToString(AuthEndTime);
         return false;
     }
-
+    
     // 到期警告
     int days_remaining = (int)((AuthEndTime - current_time) / 86400);
     if(days_remaining <= WarningDaysBefore && days_remaining > 0) {
@@ -976,7 +965,7 @@ bool CheckTimeAuthorization() {
         Print(warning);
         Comment(warning);
     }
-
+    
     return true;
 }
 
@@ -986,19 +975,19 @@ bool CheckTimeAuthorization() {
 bool CheckAccountNumberAuth() {
     string current_account = IntegerToString(AccountNumber());
     string accounts[];
-
+    
     // 解析授权账号列表
     int count = Auth_StringSplit(AuthorizedAccounts, ',', accounts);
-
+    
     for(int i = 0; i < count; i++) {
         Auth_StringTrimLeft(accounts[i]);
         Auth_StringTrimRight(accounts[i]);
-
+        
         if(accounts[i] == current_account) {
             return true;
         }
     }
-
+    
     g_auth_failure_reason = "账号 " + current_account + " 未在授权列表中";
     return false;
 }
@@ -1009,19 +998,19 @@ bool CheckAccountNumberAuth() {
 bool CheckAccountNameAuth() {
     string current_name = AccountName();
     string names[];
-
+    
     // 解析授权账户名列表
     int count = Auth_StringSplit(AuthorizedNames, ',', names);
-
+    
     for(int i = 0; i < count; i++) {
         Auth_StringTrimLeft(names[i]);
         Auth_StringTrimRight(names[i]);
-
+        
         if(StringFind(current_name, names[i]) >= 0) {
             return true;
         }
     }
-
+    
     g_auth_failure_reason = "账户名 \"" + current_name + "\" 未在授权列表中";
     return false;
 }
@@ -1032,19 +1021,19 @@ bool CheckAccountNameAuth() {
 bool CheckBrokerAuth() {
     string current_broker = AccountCompany();
     string brokers[];
-
+    
     // 解析授权经纪商列表
     int count = Auth_StringSplit(AuthorizedBrokers, ',', brokers);
-
+    
     for(int i = 0; i < count; i++) {
         Auth_StringTrimLeft(brokers[i]);
         Auth_StringTrimRight(brokers[i]);
-
+        
         if(StringFind(current_broker, brokers[i]) >= 0) {
             return true;
         }
     }
-
+    
     g_auth_failure_reason = "经纪商 \"" + current_broker + "\" 未在授权列表中";
     return false;
 }
@@ -1055,19 +1044,19 @@ bool CheckBrokerAuth() {
 bool CheckHardwareAuth() {
     g_current_hardware_id = GenerateHardwareID();
     string hardware_ids[];
-
+    
     // 解析授权硬件ID列表
     int count = Auth_StringSplit(AuthorizedHardwareIDs, ',', hardware_ids);
-
+    
     for(int i = 0; i < count; i++) {
         Auth_StringTrimLeft(hardware_ids[i]);
         Auth_StringTrimRight(hardware_ids[i]);
-
+        
         if(hardware_ids[i] == g_current_hardware_id) {
             return true;
         }
     }
-
+    
     g_auth_failure_reason = "硬件ID \"" + g_current_hardware_id + "\" 未在授权列表中";
     return false;
 }
@@ -1077,20 +1066,20 @@ bool CheckHardwareAuth() {
 //+------------------------------------------------------------------+
 bool CheckDailyUsage() {
     if(MaxDailyUsage <= 0) return true; // 无限制
-
+    
     datetime current_date = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
-
+    
     // 检查是否是新的一天
     if(current_date != g_last_usage_date) {
         g_daily_usage_count = 0;
         g_last_usage_date = current_date;
     }
-
+    
     if(g_daily_usage_count >= MaxDailyUsage) {
         g_auth_failure_reason = "今日使用次数已达上限 (" + IntegerToString(MaxDailyUsage) + ")";
         return false;
     }
-
+    
     g_daily_usage_count++;
     return true;
 }
@@ -1100,25 +1089,25 @@ bool CheckDailyUsage() {
 //+------------------------------------------------------------------+
 bool CheckEncryptionAuth() {
     if(SecurityKey == "") return true; // 无密钥则跳过
-
+    
     // 生成验证哈希
-    string verification_string = IntegerToString(AccountNumber()) +
-                               AccountName() +
-                               AccountCompany() +
+    string verification_string = IntegerToString(AccountNumber()) + 
+                               AccountName() + 
+                               AccountCompany() + 
                                SecurityKey;
-
+    
     // 简单哈希验证（实际应用中可使用更复杂的加密算法）
     int hash_value = 0;
     for(int i = 0; i < StringLen(verification_string); i++) {
         hash_value += StringGetCharacter(verification_string, i) * (i + 1);
     }
-
+    
     // 验证哈希值（这里使用简单的模运算，实际可更复杂）
     if(hash_value % 1000 == 0) {
         g_auth_failure_reason = "加密验证失败";
         return false;
     }
-
+    
     return true;
 }
 
@@ -1127,18 +1116,18 @@ bool CheckEncryptionAuth() {
 //+------------------------------------------------------------------+
 string GenerateHardwareID() {
     // 基于账号信息和终端信息生成唯一ID
-    string base_string = IntegerToString(AccountNumber()) +
-                        AccountName() +
-                        AccountCompany() +
+    string base_string = IntegerToString(AccountNumber()) + 
+                        AccountName() + 
+                        AccountCompany() + 
                         TerminalInfoString(TERMINAL_NAME) +
                         TerminalInfoString(TERMINAL_PATH);
-
+    
     // 简单哈希生成ID
     int hash = 0;
     for(int i = 0; i < StringLen(base_string); i++) {
         hash = hash * 31 + StringGetCharacter(base_string, i);
     }
-
+    
     return IntegerToString(MathAbs(hash));
 }
 
@@ -1147,7 +1136,7 @@ string GenerateHardwareID() {
 //+------------------------------------------------------------------+
 void ShowAuthorizationFailure() {
     if(!ShowAuthFailureMessage) return;
-
+    
     // 检查是否在重试状态，显示不同的消息
     if(g_auth_retry_active) {
         string retry_message = "🔄 SMC指标正在验证授权\n\n";
@@ -1155,10 +1144,10 @@ void ShowAuthorizationFailure() {
         retry_message += "重试进度: " + IntegerToString(g_auth_retry_count) + "/" + IntegerToString(MaxAuthRetries) + "\n\n";
         retry_message += "请稍候，系统正在尝试获取账号信息...\n";
         retry_message += "如果长时间无响应，请检查网络连接或重启MT4";
-
+        
         Comment(retry_message);
         Print("🔄 " + g_auth_failure_reason + " (重试 " + IntegerToString(g_auth_retry_count) + "/" + IntegerToString(MaxAuthRetries) + ")");
-
+        
         // 显示重试状态的图表标签
         string retry_obj = "AUTH_RETRY_STATUS";
         if(ObjectFind(0, retry_obj) < 0) {
@@ -1170,10 +1159,10 @@ void ShowAuthorizationFailure() {
         ObjectSetInteger(0, retry_obj, OBJPROP_COLOR, clrOrange);
         ObjectSetInteger(0, retry_obj, OBJPROP_FONTSIZE, 12);
         ObjectSetString(0, retry_obj, OBJPROP_TEXT, "🔄 验证中... (" + IntegerToString(g_auth_retry_count) + "/" + IntegerToString(MaxAuthRetries) + ")");
-
+        
         return; // 重试期间不显示失败信息
     }
-
+    
     string message = "🔐 SMC指标授权失败\n\n";
     message += "失败原因: " + g_auth_failure_reason + "\n\n";
     message += "当前信息:\n";
@@ -1181,11 +1170,11 @@ void ShowAuthorizationFailure() {
     message += "账户名: " + AccountName() + "\n";
     message += "经纪商: " + AccountCompany() + "\n";
     message += "账户类型: " + (IsDemo() ? "模拟账户" : "真实账户") + "\n";
-
+    
     if(UseHardwareAuth) {
         message += "硬件ID: " + g_current_hardware_id + "\n";
     }
-
+    
     // 如果是账号为0的问题，给出特殊提示
     if(g_account_zero_detected) {
         message += "\n💡 提示：检测到账号信息获取失败\n";
@@ -1200,10 +1189,10 @@ void ShowAuthorizationFailure() {
     message += "\n请联系开发者获取授权\n";
     message += "联系方式: V:2030988";
     }
-
+    
     Comment(message);
     Print("🔐 " + g_auth_failure_reason);
-
+    
     // 显示图表上的警告
     string warning_obj = "AUTH_WARNING";
     if(ObjectFind(0, warning_obj) < 0) {
@@ -1214,13 +1203,13 @@ void ShowAuthorizationFailure() {
         ObjectSetInteger(0, warning_obj, OBJPROP_YDISTANCE, 50);
         ObjectSetInteger(0, warning_obj, OBJPROP_COLOR, clrRed);
         ObjectSetInteger(0, warning_obj, OBJPROP_FONTSIZE, 12);
-
+    
     if(g_account_zero_detected) {
         ObjectSetString(0, warning_obj, OBJPROP_TEXT, "🔐 账号信息获取失败 - 请检查MT4连接");
     } else {
         ObjectSetString(0, warning_obj, OBJPROP_TEXT, "🔐 未授权 - 请联系开发者");
     }
-
+    
     // 清理重试状态标签
     string retry_obj = "AUTH_RETRY_STATUS";
     if(ObjectFind(0, retry_obj) >= 0) {
@@ -1236,33 +1225,33 @@ void ShowAuthorizationSuccess() {
     message += "账号: " + IntegerToString(AccountNumber()) + "\n";
     message += "账户名: " + AccountName() + "\n";
     message += "账户类型: " + (IsDemo() ? "模拟账户" : "真实账户") + "\n";
-
+    
     if(UseTimeAuth) {
         int days_remaining = (int)((AuthEndTime - TimeCurrent()) / 86400);
         message += "授权剩余: " + IntegerToString(days_remaining) + " 天\n";
     }
-
+    
     if(MaxDailyUsage > 0) {
         message += "今日剩余使用: " + IntegerToString(MaxDailyUsage - g_daily_usage_count) + " 次\n";
     }
-
+    
     Print("🔐 授权验证成功");
-
+    
     // 移除未授权提示对象（如存在）
     string warning_obj = "AUTH_WARNING";
     if(ObjectFind(0, warning_obj) >= 0) {
         ObjectDelete(0, warning_obj);
     }
-
+    
     // 移除重试状态提示对象（如存在）
     string retry_obj = "AUTH_RETRY_STATUS";
     if(ObjectFind(0, retry_obj) >= 0) {
         ObjectDelete(0, retry_obj);
     }
-
+    
     // 短暂显示成功信息
     Comment(message);
-
+    
     // 3秒后清除信息
     EventSetTimer(3);
 }
@@ -1274,16 +1263,16 @@ void StartAuthorizationRetry() {
     if(!EnableAuthRetry || g_auth_retry_active) {
         return;
     }
-
+    
     g_auth_retry_active = true;
     g_auth_retry_count = 0;
     g_last_auth_attempt = TimeCurrent();
-
+    
     if(ShowRetryStatus) {
         Print("🔄 启动授权重试机制，最大重试次数: ", MaxAuthRetries);
         Comment("🔄 账号信息加载中，正在重试验证...\n请稍候，最多重试 " + IntegerToString(MaxAuthRetries) + " 次");
     }
-
+    
     // 设置定时器进行重试
     EventSetTimer(1); // 1秒间隔检查
 }
@@ -1295,45 +1284,45 @@ bool ProcessAuthorizationRetry() {
     if(!g_auth_retry_active) {
         return false;
     }
-
+    
     datetime current_time = TimeCurrent();
     int retry_interval = 1; // 默认1秒间隔
-
+    
     // 获取当前重试间隔
     if(g_auth_retry_count < ArraySize(AuthRetryIntervals)) {
         retry_interval = AuthRetryIntervals[g_auth_retry_count];
     } else {
         retry_interval = AuthRetryIntervals[ArraySize(AuthRetryIntervals) - 1];
     }
-
+    
     // 检查是否到了重试时间
     if(current_time - g_last_auth_attempt < retry_interval) {
         return false; // 还没到重试时间
     }
-
+    
     // 检查是否超过最大重试次数
     if(g_auth_retry_count >= MaxAuthRetries) {
         StopAuthorizationRetry(false); // 重试失败
         return false;
     }
-
+    
     g_auth_retry_count++;
     g_last_auth_attempt = current_time;
-
+    
     if(ShowRetryStatus) {
         Print("🔄 执行第 ", g_auth_retry_count, " 次授权重试...");
         Comment("🔄 正在进行第 " + IntegerToString(g_auth_retry_count) + "/" + IntegerToString(MaxAuthRetries) + " 次重试验证...");
     }
-
+    
     // 重置授权检查状态并重新验证
     g_auth_checked = false;
     g_account_zero_detected = false;
-
+    
     if(CheckAuthorization()) {
         StopAuthorizationRetry(true); // 重试成功
         return true;
     }
-
+    
     // 如果仍然检测到账号为0，继续重试
     if(g_account_zero_detected) {
         if(ShowRetryStatus) {
@@ -1354,9 +1343,9 @@ void StopAuthorizationRetry(bool success) {
     if(!g_auth_retry_active) {
         return;
     }
-
+    
     g_auth_retry_active = false;
-
+    
     if(success) {
         if(ShowRetryStatus) {
             Print("✅ 授权重试成功！总共重试了 ", g_auth_retry_count, " 次");
@@ -1370,7 +1359,7 @@ void StopAuthorizationRetry(bool success) {
         }
         ShowAuthorizationFailure();
     }
-
+    
     // 重置重试相关变量
     g_auth_retry_count = 0;
     g_last_auth_attempt = 0;
@@ -1382,17 +1371,17 @@ void StopAuthorizationRetry(bool success) {
 //+------------------------------------------------------------------+
 bool IsDebuggerPresent() {
     if(!AntiDebugMode) return false;
-
+    
     // 简单的反调试检测
     datetime start_time = GetTickCount();
     Sleep(1);
     datetime end_time = GetTickCount();
-
+    
     // 如果时间差异过大，可能存在调试器
     if(end_time - start_time > 100) {
         return true;
     }
-
+    
     return false;
 }
 
@@ -1410,18 +1399,18 @@ string GetAuthorizationInfo() {
     if(!g_is_authorized) {
         return "未授权: " + g_auth_failure_reason;
     }
-
+    
     string info = "已授权 | 账号: " + IntegerToString(AccountNumber());
-
+    
     if(UseTimeAuth) {
         int days_remaining = (int)((AuthEndTime - TimeCurrent()) / 86400);
         info += " | 剩余: " + IntegerToString(days_remaining) + "天";
     }
-
+    
     if(MaxDailyUsage > 0) {
         info += " | 今日剩余: " + IntegerToString(MaxDailyUsage - g_daily_usage_count);
     }
-
+    
     return info;
 }
 
@@ -1433,7 +1422,7 @@ int Auth_StringSplit(string str, ushort separator, string &result[]) {
     string temp = str;
     uchar sep_char = (uchar)separator;
     string sep = CharToString(sep_char);
-
+    
     while(StringFind(temp, sep) >= 0) {
         int pos = StringFind(temp, sep);
         int new_size = (int)(count + 1);
@@ -1442,14 +1431,14 @@ int Auth_StringSplit(string str, ushort separator, string &result[]) {
         temp = StringSubstr(temp, pos + 1);
         count++;
     }
-
+    
     if(StringLen(temp) > 0) {
         int new_size = (int)(count + 1);
         ArrayResize(result, new_size);
         result[count] = temp;
         count++;
     }
-
+    
     return count;
 }
 
@@ -1481,7 +1470,7 @@ int OnInit()
         Print("🔐 检测到调试环境，程序退出");
         return INIT_FAILED;
     }
-
+    
     // 授权验证
     if(!CheckAuthorization()) {
         // 检查是否是账号为0的情况且启用了重试机制
@@ -1499,24 +1488,24 @@ int OnInit()
     // 显示授权成功信息
     ShowAuthorizationSuccess();
     }
-
+    
     // 验证性能优化参数
     if(MaxBarsToCalculate < 0) {
         Print("SMC 错误: MaxBarsToCalculate不能为负数，已重置为1000");
         MaxBarsToCalculate = 1000;
     }
-
+    
     if(MaxBarsToCalculate > 0 && MaxBarsToCalculate < StructureLookback * 3) {
         Print("SMC 警告: MaxBarsToCalculate(", MaxBarsToCalculate, ")可能太小，建议至少", StructureLookback * 3, "根K线");
         Print("SMC 提示: 设置为0可计算所有K线，但会影响性能");
     }
-
+    
     if(MaxBarsToCalculate == 0) {
         Print("SMC 提示: 将计算所有K线，这可能影响性能，建议设置为500-2000");
     } else {
         Print("SMC 性能优化: 限制计算", MaxBarsToCalculate, "根K线，可提高运行速度");
     }
-
+    
     // 设置指标缓冲区
     SetIndexBuffer(0, BOS_Top);
     SetIndexBuffer(1, BOS_Bottom);
@@ -1572,16 +1561,16 @@ int OnInit()
 
     // 初始化数组
     ArrayResize(swing_points, 1000);
-    ArrayResize(poi_zones, MaxFVGZones + MaxOBZones * 3); // [v1.72] OB存储池放大,显示由等级+Top-N控制
+    ArrayResize(poi_zones, MaxFVGZones + MaxOBZones);
     ArrayResize(structure_zones, MaxBOSZones + MaxCHOCHZones);
-
+    
     // 初始化市场结构状态
     g_market_trend = 0;
     g_last_hh_index = -1;
     g_last_hl_index = -1;
     g_last_lh_index = -1;
     g_last_ll_index = -1;
-
+    
     // 初始化状态机变量
     g_trend_state = 0;
     g_protected_high_index = -1;
@@ -1589,23 +1578,23 @@ int OnInit()
     g_last_bos_bar = -1;
     g_last_choch_bar = -1;
     g_last_mode_state = CHOCH_InstantTrendUpdate;
-
+    
     // 初始化CHoCH唯一性状态标志
     g_choch_down_occurred_in_uptrend = false;
     g_choch_up_occurred_in_downtrend = false;
-
+    
     // 设置指标名称
     IndicatorShortName("SMC OrderFlow (" + IntegerToString(StructureLookback) + ")");
-
+    
     // 清除所有旧的SMC对象
     ObjectsDeleteAll(0, "SMC_");
-
+    
     // 启动1秒定时器用于更细粒度的刷新（满足收盘后5秒内持续刷新）
     EventSetTimer(1);
-
+    
     // 显示初始化信息
     Comment("SMC指标已加载，正在分析市场结构...");
-
+    
     return(INIT_SUCCEEDED);
 }
 
@@ -1638,10 +1627,10 @@ int OnCalculate(const int rates_total,
         }
         last_recheck = TimeCurrent();
     }
-
+    
     // 确保有足够的数据
     if(rates_total < StructureLookback * 2 + 10) return(0);
-
+    
     // --- 新K线检测 ---
     static datetime last_bar_time = 0;
     bool is_new_bar = false;
@@ -1671,7 +1660,7 @@ int OnCalculate(const int rates_total,
         swing_count = 0;
         poi_count = 0;
         g_data_version++; // 完整重算导致版本变化
-
+        
         // 首次计算，清空所有缓冲区
         ArrayInitialize(BOS_Top, EMPTY_VALUE);
         ArrayInitialize(BOS_Bottom, EMPTY_VALUE);
@@ -1750,13 +1739,6 @@ int OnCalculate(const int rates_total,
         }
         // --- 摆点后置过滤结束 ---
 
-        // [SMC重写] 追加:在最终摆点上重建标准BOS/CHoCH结构显示(覆盖旧structure_zones)
-        // 上游(摆点/缠论/is_broken/趋势引擎/g_market_trend)保持不变;仅SMC结构显示改为标准定义
-        DetectStructureBreaksSMC(high, low, close);
-        for(int sb = limit; sb >= 0; sb--) {
-            UpdateBuffers(sb);
-        }
-
         // V1.62：后置裁剪，确保只保留每种类型最新的N个（删除超出限制的旧对象）
         TrimStructureZonesToNewest();
 
@@ -1832,7 +1814,7 @@ void FilterSequentialSwings(int current_index)
     if(current_index < 1) return;
     SwingPoint current = swing_points[current_index];
     int prev_valid_idx = -1;
-
+    
     // 向前查找最近的有效摆点 (忽略已作废的点)
     for(int i = current_index - 1; i >= 0; i--) {
         if(swing_points[i].structure_type >= 0) {
@@ -1840,22 +1822,22 @@ void FilterSequentialSwings(int current_index)
             break;
         }
     }
-
+    
     if(prev_valid_idx < 0) return;
-
+    
     SwingPoint prev = swing_points[prev_valid_idx];
-
+    
     // 规则：如果发现连续同向摆点，只保留极值
     if(current.is_high == prev.is_high) {
         bool keep_current = false;
-        if(current.is_high) {
+        if(current.is_high) { 
              // 都是高点，保留更高的
              if(current.price > prev.price) keep_current = true;
-        } else {
+        } else { 
              // 都是低点，保留更低的
              if(current.price < prev.price) keep_current = true;
         }
-
+        
         if(keep_current) {
             swing_points[prev_valid_idx].structure_type = -1; // 废弃前一个（因为它不如当前极值）
              // 注意：前一个点被废弃后，BOS扫描将跳过它，解决了BOS出现在被过滤点的问题
@@ -1877,11 +1859,11 @@ void AddSwingPoint(int bar, double price, bool is_high)
     // 原因2: 非缠论模式下，在强趋势中MA21预过滤会把所有同向回调点（Low>MA21）全部删除
     //        导致无法构成高低交替的摆点序列，进而造成所有摆点连线消失
     // 修复: MA21过滤仅在缠论步骤（结构+信号层面）执行，不在摆点原始识别层干预
-
+    
     if(swing_count >= ArraySize(swing_points)) {
         ArrayResize(swing_points, swing_count + 100);
     }
-
+    
     swing_points[swing_count].bar_index = bar;
     swing_points[swing_count].price = price;
     swing_points[swing_count].is_high = is_high;
@@ -1892,14 +1874,14 @@ void AddSwingPoint(int bar, double price, bool is_high)
     swing_points[swing_count].processed_index = (EnableChanOptimization && g_processed_bars_count > 0)
                                                 ? FindProcessedBarIndex(bar, is_high)
                                                 : -1;
-
+    
     // 分类新的swing point为HH/HL/LH/LL
     ClassifySwingPoint(swing_count);
-
+    
     // V1.56: 解决BOS误触问题
     FilterSequentialSwings(swing_count);
 
-
+    
     swing_count++;
 }
 
@@ -1993,7 +1975,7 @@ void ClassifySwingPoint(int current_index)
             }
         }
     }
-
+    
     swing_points[current_index] = current;
     // 更新市场趋势状态（使用窗口多数派）
     UpdateMarketTrend();
@@ -2009,7 +1991,7 @@ void UpdateMarketTrend()
         ResetTrendModeState();
         g_last_mode_state = CHOCH_InstantTrendUpdate;
     }
-
+    
     if(CHOCH_InstantTrendUpdate) {
         // === 方案B：CHoCH驱动的状态机模型 ===
         UpdateTrendStateMachine();
@@ -2030,15 +2012,15 @@ void ResetTrendModeState()
     g_protected_low_index = -1;
     g_last_bos_bar = -1;
     g_last_choch_bar = -1;
-
+    
     // 重置CHoCH唯一性标志
     g_choch_down_occurred_in_uptrend = false;
     g_choch_up_occurred_in_downtrend = false;
-
+    
     // 重置主趋势状态，让新模式重新计算
     g_market_trend = 0;
-
-    Print("趋势判断模式已切换，状态已重置。当前模式：",
+    
+    Print("趋势判断模式已切换，状态已重置。当前模式：", 
           CHOCH_InstantTrendUpdate ? "方案B(CHoCH驱动状态机)" : "方案A(增强型序列跟踪)");
 }
 
@@ -2050,15 +2032,15 @@ void UpdateTrendSequenceTracking()
     // 寻找未破位的连续结构链条来判断趋势
     int up_chain_length = 0;    // 上升链条长度 (HL->HH->HL->HH...)
     int down_chain_length = 0;  // 下降链条长度 (LH->LL->LH->LL...)
-
+    
     // 从最新的结构点开始向前回溯
     int last_type = -1;
     bool chain_broken = false;
-
+    
     for(int i = swing_count - 1; i >= 0 && !chain_broken; i--) {
         int st = swing_points[i].structure_type;
         if(st == -1 || swing_points[i].is_broken) continue;
-
+        
         if(last_type == -1) {
             last_type = st;
             if(st == 0 || st == 1) up_chain_length = 1;      // HH/HL
@@ -2067,19 +2049,19 @@ void UpdateTrendSequenceTracking()
             // 检查是否能形成有效的交替序列
             bool is_valid_up_sequence = false;
             bool is_valid_down_sequence = false;
-
+            
             if((last_type == 0 || last_type == 1) && (st == 0 || st == 1)) {
                 // 上升趋势中的有效交替：HH<->HL
                 if((last_type == 0 && st == 1) || (last_type == 1 && st == 0)) {
                     is_valid_up_sequence = true;
                 }
             } else if((last_type == 2 || last_type == 3) && (st == 2 || st == 3)) {
-                // 下降趋势中的有效交替：LH<->LL
+                // 下降趋势中的有效交替：LH<->LL  
                 if((last_type == 2 && st == 3) || (last_type == 3 && st == 2)) {
                     is_valid_down_sequence = true;
                 }
             }
-
+            
             if(is_valid_up_sequence) {
                 up_chain_length++;
                 last_type = st;
@@ -2091,7 +2073,7 @@ void UpdateTrendSequenceTracking()
             }
         }
     }
-
+    
     // 记录之前的趋势状态
     int previous_trend = g_market_trend;
 
@@ -2135,9 +2117,9 @@ void UpdateTrendSequenceTracking()
                         up_chain_length, down_chain_length,
                         latest_hh_idx >= 0 ? "是" : "否",
                         latest_ll_idx >= 0 ? "是" : "否");
-        }
+        }        
     }
-
+    
     // CHoCH状态标志重置逻辑
     if(previous_trend != g_market_trend) {
         if(g_market_trend == 1) {
@@ -2156,16 +2138,16 @@ void UpdateTrendStateMachine()
     // 记录之前的状态
     int previous_state = g_trend_state;
     int previous_trend = g_market_trend;
-
+    
     // 检查是否有最近的BOS/CHoCH事件需要处理
     ProcessRecentStructureBreaks();
-
+    
     // 将状态机状态同步到g_market_trend
     g_market_trend = g_trend_state;
-
+    
     // 更新受保护点位
     UpdateProtectedLevels();
-
+    
     // CHoCH状态标志重置逻辑
     if(previous_trend != g_market_trend) {
         if(g_market_trend == 1) {
@@ -2194,7 +2176,7 @@ void ProcessRecentStructureBreaks()
             }
         }
     }
-
+    
     // 检查向下CHoCH：最新的HL(受保护低点)被突破
     if(g_trend_state == 1) { // 当前为上升趋势
         int latest_hl_index = FindLatestUnbrokenStructure(1); // HL
@@ -2208,7 +2190,7 @@ void ProcessRecentStructureBreaks()
             }
         }
     }
-
+    
     // 如果当前状态为UNDEFINED，检查首次BOS来启动状态机
     if(g_trend_state == 0) {
         // 检查向上BOS：突破HH
@@ -2221,7 +2203,7 @@ void ProcessRecentStructureBreaks()
                 return;
             }
         }
-
+        
         // 检查向下BOS：跌破LL
         int latest_ll_index = FindLatestUnbrokenStructure(3); // LL
         if(latest_ll_index >= 0) {
@@ -2261,7 +2243,7 @@ void UpdateProtectedLevels()
 bool CheckPriceBreakSince(int since_bar, double price, bool check_upward_break)
 {
     if(since_bar < 0 || since_bar >= Bars) return false;
-
+    
     // 从since_bar到当前K线，检查是否有价格突破
     for(int i = since_bar - 1; i >= 0; i--) { // 从since_bar的下一根K线开始检查
         if(check_upward_break) {
@@ -2285,7 +2267,7 @@ bool CheckPriceBreakSince(int since_bar, double price, bool check_upward_break)
 bool IsProtectedSwingValid(int swing_bar, double swing_price, bool is_protected_low)
 {
     if(swing_bar < 0 || swing_bar >= Bars) return false;
-
+    
     // 从受保护摆动点形成后到当前，检查是否被突破
     for(int i = swing_bar - 1; i >= 0; i--) {
         if(is_protected_low) {
@@ -2331,7 +2313,7 @@ void DetectStructureBreaks(int current_bar, const double &high[], const double &
         int target_hh_index = FindLatestUnbrokenStructure(0);
         if(target_hh_index >= 0) {
             SwingPoint target_hh = swing_points[target_hh_index];
-
+            
             // === 新增：受保护摆动点验证 ===
             // 找到与该HH配对的HL(受保护低点)
             int protected_hl_index = -1;
@@ -2341,19 +2323,19 @@ void DetectStructureBreaks(int current_bar, const double &high[], const double &
                     break;
                 }
             }
-
+            
             bool structure_valid = true;
             if(protected_hl_index >= 0) {
                 SwingPoint protected_hl = swing_points[protected_hl_index];
                 // 验证受保护低点是否仍然有效（未被跌破）
                 structure_valid = IsProtectedSwingValid(protected_hl.bar_index, protected_hl.price, true);
             }
-
+            
             bool hh_broken = (ConfirmBreakClose ? IsPriceGreater(candle_close, target_hh.price)
                                                 : IsPriceGreater(candle_high,  target_hh.price));
             bool quality_ok = IsDisplacementOK(body_ratio, momentum_ratio);
             bool fvg_ok = (!RequireFVG_BOS) || HasRecentFVG(current_bar, true, high, low, close);
-
+            
             // 只有在结构仍然有效的情况下才识别BOS
             // V1.63：缠论模式下仅当swing_bar在过滤后摆点集合中时添加（防御性校验）
             if(hh_broken && quality_ok && fvg_ok && structure_valid &&
@@ -2375,7 +2357,7 @@ void DetectStructureBreaks(int current_bar, const double &high[], const double &
         int target_ll_index = FindLatestUnbrokenStructure(3);
         if(target_ll_index >= 0) {
             SwingPoint target_ll = swing_points[target_ll_index];
-
+            
             // === 新增：受保护摆动点验证 ===
             // 找到与该LL配对的LH(受保护高点)
             int protected_lh_index = -1;
@@ -2385,19 +2367,19 @@ void DetectStructureBreaks(int current_bar, const double &high[], const double &
                     break;
                 }
             }
-
+            
             bool structure_valid = true;
             if(protected_lh_index >= 0) {
                 SwingPoint protected_lh = swing_points[protected_lh_index];
                 // 验证受保护高点是否仍然有效（未被突破）
                 structure_valid = IsProtectedSwingValid(protected_lh.bar_index, protected_lh.price, false);
             }
-
+            
             bool ll_broken = (ConfirmBreakClose ? IsPriceLess(candle_close, target_ll.price)
                                                 : IsPriceLess(candle_low,   target_ll.price));
             bool quality_ok = IsDisplacementOK(body_ratio, momentum_ratio);
             bool fvg_ok = (!RequireFVG_BOS) || HasRecentFVG(current_bar, false, high, low, close);
-
+            
             // 只有在结构仍然有效的情况下才识别BOS
             // V1.63：缠论模式下仅当swing_bar在过滤后摆点集合中时添加
             if(ll_broken && quality_ok && fvg_ok && structure_valid &&
@@ -2505,75 +2487,6 @@ int FindLatestUnbrokenStructure(int structure_type)
 }
 
 //+------------------------------------------------------------------+
-//| [SMC重写] 在(更旧older_bar, 更新newer_bar]间从旧到新找收盘破位bar  |
-//| is_up=true 找突破level上方,否则找跌破下方;ConfirmBreakClose 决定   |
-//| 用收盘还是 high/low。返回 -1 表示无确认破位。                       |
-//| 注:本指标 index 越大越旧;older_bar>newer_bar。                    |
-//+------------------------------------------------------------------+
-int FindBreakBarSMC(double level, bool is_up, int older_bar, int newer_bar,
-                    const double &high[], const double &low[], const double &close[])
-{
-    int lo = MathMax(newer_bar, 0);
-    int hi = older_bar - 1;
-    if(hi < lo) return newer_bar;   // 两摆点紧邻,直接用新摆点bar
-    for(int b = hi; b >= lo; b--) { // 从旧到新扫描
-        if(is_up) {
-            double v = ConfirmBreakClose ? close[b] : high[b];
-            if(v > level) return b;
-        } else {
-            double v = ConfirmBreakClose ? close[b] : low[b];
-            if(v < level) return b;
-        }
-    }
-    return -1;
-}
-
-//+------------------------------------------------------------------+
-//| [SMC重写] 固定摆点上的标准BOS/CHoCH检测(单次扫描,bias状态机)      |
-//| 只读swing_points[];只写structure_zones[];不动缠论/g_market_trend。 |
-//+------------------------------------------------------------------+
-void DetectStructureBreaksSMC(const double &high[], const double &low[], const double &close[])
-{
-    structure_count = 0;   // SMC结构输出,重建
-    g_smc_bias = 0;
-
-    bool   have_high = false, have_low = false;
-    double prev_high = 0.0,  prev_low = 0.0;
-    int    prev_high_bar = -1, prev_low_bar = -1;
-    int    total = ArraySize(close);
-
-    // 摆点按时间顺序:index 0=最旧, swing_count-1=最新
-    for(int i = 0; i < swing_count; i++) {
-        if(swing_points[i].structure_type < 0) continue;   // 跳过未分类/废弃摆点
-        int    sbar   = swing_points[i].bar_index;
-        double sprice = swing_points[i].price;
-        if(sbar < 0 || sbar >= total) continue;
-
-        if(swing_points[i].is_high) {
-            if(have_high && sprice > prev_high) {
-                int bbar = FindBreakBarSMC(prev_high, true, prev_high_bar, sbar, high, low, close);
-                if(bbar >= 0) {
-                    int stype = (g_smc_bias == -1) ? 1 : 0; // 下降中破前高=CHoCH(1),否则BOS(0)
-                    AddStructureZone(bbar, prev_high, true, stype, prev_high_bar);
-                    g_smc_bias = 1;
-                }
-            }
-            prev_high = sprice; prev_high_bar = sbar; have_high = true;
-        } else {
-            if(have_low && sprice < prev_low) {
-                int bbar = FindBreakBarSMC(prev_low, false, prev_low_bar, sbar, high, low, close);
-                if(bbar >= 0) {
-                    int stype = (g_smc_bias == 1) ? 1 : 0; // 上升中破前低=CHoCH(1),否则BOS(0)
-                    AddStructureZone(bbar, prev_low, false, stype, prev_low_bar);
-                    g_smc_bias = -1;
-                }
-            }
-            prev_low = sprice; prev_low_bar = sbar; have_low = true;
-        }
-    }
-}
-
-//+------------------------------------------------------------------+
 //| 尝试把新FVG并入已存在的同向、价格重叠的最近FVG [v1.71]            |
 //| 返回 true 表示已合并(调用方不再 AddPOIZone)                       |
 //+------------------------------------------------------------------+
@@ -2607,26 +2520,26 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
     // 边界检查：确保能访问当前K线和后面两根K线（MT4标准i--循环）
     if(current_bar < 2) return;
     if(current_bar + 2 >= ArraySize(high)) return;
-
+    
     // 在MT4标准i--循环中，当处理K线current_bar时：
     // current_bar+2 = 更旧的K线（第一根）
-    // current_bar+1 = 较旧的K线（第二根，中间）
+    // current_bar+1 = 较旧的K线（第二根，中间）  
     // current_bar   = 当前K线（第三根）
-
+    
     // 预计算 ATR，用于质量评分
     double fvg_atr = iATR(NULL,0,AtrPeriod,current_bar);
     if(fvg_atr <= 0) fvg_atr = MathMax(high[current_bar] - low[current_bar], Point);
-
+    
     // 检查看涨FVG：第一根K线高点 < 第三根K线低点
     if(high[current_bar + 2] < low[current_bar]) {
         double gap_size = low[current_bar] - high[current_bar + 2];
-
+        
         // 确保缺口足够大（至少1个点差）
         if(gap_size >= Point) {
             // 验证中间K线的强势特征
             // 对齐标准:仅要求中间K线方向(去掉第三根延续条件) [v1.71]
             bool valid_bullish_fvg = close[current_bar + 1] > open[current_bar + 1]; // 中间K线看涨
-
+            
             if(valid_bullish_fvg) {
                 // 质量评分：Gap/ATR + 趋势一致；并进行折/溢价过滤
                 double gap_score = MathMin(1.0, gap_size / MathMax(fvg_atr, Point));
@@ -2655,17 +2568,17 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
             }
         }
     }
-
+    
     // 检查看跌FVG：第一根K线低点 > 第三根K线高点
     if(low[current_bar + 2] > high[current_bar]) {
         double gap_size = low[current_bar + 2] - high[current_bar];
-
+        
         // 确保缺口足够大（至少1个点差）
         if(gap_size >= Point) {
             // 验证中间K线的强势特征
             // 对齐标准:仅要求中间K线方向(去掉第三根延续条件) [v1.71]
             bool valid_bearish_fvg = close[current_bar + 1] < open[current_bar + 1]; // 中间K线看跌
-
+            
             if(valid_bearish_fvg) {
                 double gap_score = MathMin(1.0, gap_size / MathMax(fvg_atr, Point));
                 double trend_score = (g_market_trend == -1) ? 1.0 : 0.0;
@@ -2698,34 +2611,34 @@ void IdentifyFVG(int current_bar, const double &open[], const double &high[], co
 //+------------------------------------------------------------------+
 //| 识别Order Blocks - 优化为从旧到新的计算顺序                     |
 //+------------------------------------------------------------------+
-void IdentifyOrderBlocks(int current_bar, const double &open[], const double &high[],
+void IdentifyOrderBlocks(int current_bar, const double &open[], const double &high[], 
                         const double &low[], const double &close[])
 {
     // 边界检查：确保能访问当前K线和前面的K线
     if(current_bar < 5) return;  // 需要足够的历史数据
     if(current_bar >= ArraySize(high)) return;
-
+    
     // 计算当前K线和前一根K线的波动范围
     double current_range = high[current_bar] - low[current_bar];
     double prev_range = high[current_bar - 1] - low[current_bar - 1];
-
+    
     // 避免除零错误
     if(prev_range <= 0) prev_range = Point;
-
+    
     // 检查看涨Order Block：当前K线强势上涨
     bool strong_bullish = (close[current_bar] > open[current_bar]) &&                    // 当前K线看涨
                          (close[current_bar] - open[current_bar] > current_range * 0.6) && // 实体占比大
                          (close[current_bar] > close[current_bar - 1]) &&                 // 高于前一根收盘
                          (current_range > prev_range * 1.2);                             // 波动幅度增大
-
+    
     bool allow_bullish_ob = (!OB_OnlyDrive) || (current_bar == g_last_break_up_bar);
     if(strong_bullish && allow_bullish_ob) {
-        // [v1.72] 冲击之前(更旧侧)最后一根阴线作为看涨OB
-        for(int i = current_bar + 1; i <= MathMin(current_bar + 5, ArraySize(close) - 1); i++) {
-            if(close[i] < open[i]) { // 找到看跌K线(阴线)
+        // 寻找前面最近的看跌K线作为Order Block
+        for(int i = current_bar - 1; i >= MathMax(current_bar - 5, 0); i--) {
+            if(close[i] < open[i]) { // 找到看跌K线
                 AddPOIZone(i, high[i], low[i], true, 1);
                 if(EnableOBDebug) {
-                    Print("SMC OB创建: 看涨Order Block at bar ", i, " 时间: ", TimeToString(Time[i]),
+                    Print("SMC OB创建: 看涨Order Block at bar ", i, " 时间: ", TimeToString(Time[i]), 
                           " 价格范围: ", DoubleToString(low[i], Digits), " - ", DoubleToString(high[i], Digits),
                           " 触发K线: ", current_bar, " 强势比率: ", DoubleToString(current_range/prev_range, 2));
                 }
@@ -2733,21 +2646,21 @@ void IdentifyOrderBlocks(int current_bar, const double &open[], const double &hi
             }
         }
     }
-
+    
     // 检查看跌Order Block：当前K线强势下跌
     bool strong_bearish = (close[current_bar] < open[current_bar]) &&                    // 当前K线看跌
                          (open[current_bar] - close[current_bar] > current_range * 0.6) && // 实体占比大
                          (close[current_bar] < close[current_bar - 1]) &&                 // 低于前一根收盘
                          (current_range > prev_range * 1.2);                             // 波动幅度增大
-
+    
     bool allow_bearish_ob = (!OB_OnlyDrive) || (current_bar == g_last_break_down_bar);
     if(strong_bearish && allow_bearish_ob) {
-        // [v1.72] 冲击之前(更旧侧)最后一根阳线作为看跌OB
-        for(int i = current_bar + 1; i <= MathMin(current_bar + 5, ArraySize(close) - 1); i++) {
-            if(close[i] > open[i]) { // 找到看涨K线(阳线)
+        // 寻找前面最近的看涨K线作为Order Block
+        for(int i = current_bar - 1; i >= MathMax(current_bar - 5, 0); i--) {
+            if(close[i] > open[i]) { // 找到看涨K线
                 AddPOIZone(i, high[i], low[i], false, 1);
                 if(EnableOBDebug) {
-                    Print("SMC OB创建: 看跌Order Block at bar ", i, " 时间: ", TimeToString(Time[i]),
+                    Print("SMC OB创建: 看跌Order Block at bar ", i, " 时间: ", TimeToString(Time[i]), 
                           " 价格范围: ", DoubleToString(low[i], Digits), " - ", DoubleToString(high[i], Digits),
                           " 触发K线: ", current_bar, " 强势比率: ", DoubleToString(current_range/prev_range, 2));
                 }
@@ -2765,24 +2678,24 @@ void IdentifyOrderBlocks(int current_bar, const double &open[], const double &hi
 void RemoveOldestPOIZone()
 {
     if(poi_count <= 0) return;
-
+    
     // 删除最旧区域对应的图形对象
     string type_prefix = (poi_zones[0].poi_type == 0) ? "FVG" : "OB";
     string obj_name = "SMC_Zone_" + type_prefix + "_" + IntegerToString(poi_zones[0].start_bar);
     string label_name = "SMC_ZoneLabel_" + type_prefix + "_" + IntegerToString(poi_zones[0].start_bar);
     string border_name = obj_name + "_Border";
-
+    
     ObjectDelete(obj_name);
     ObjectDelete(label_name);
     ObjectDelete(border_name); // 删除边框对象
-
+    
     // Print("SMC: 删除最旧的", type_prefix, "区域 at bar ", poi_zones[0].start_bar, " 时间: ", TimeToString(Time[poi_zones[0].start_bar]));
-
+    
     // 将数组元素左移（删除第一个元素）
     for(int i = 0; i < poi_count - 1; i++) {
         poi_zones[i] = poi_zones[i + 1];
     }
-
+    
     poi_count--;
     g_data_version++; // 删除旧POI，版本递增
 }
@@ -2807,7 +2720,7 @@ int CountPOIZonesByType(int poi_type)
 void RemoveOldestPOIZoneByType(int target_type)
 {
     if(poi_count <= 0) return;
-
+    
     // 查找最旧的指定类型区域
     int oldest_index = -1;
     for(int i = 0; i < poi_count; i++) {
@@ -2816,29 +2729,24 @@ void RemoveOldestPOIZoneByType(int target_type)
             break;
         }
     }
-
+    
     if(oldest_index == -1) return; // 没有找到指定类型的区域
-
+    
     // 删除最旧区域对应的图形对象
     string type_prefix = (target_type == 0) ? "FVG" : "OB";
     string obj_name = "SMC_Zone_" + type_prefix + "_" + IntegerToString(poi_zones[oldest_index].start_bar);
     string label_name = "SMC_ZoneLabel_" + type_prefix + "_" + IntegerToString(poi_zones[oldest_index].start_bar);
-
+    
     ObjectDelete(obj_name);
     ObjectDelete(label_name);
-    // [v1.72] 一并删除衍生对象(边框/上下线/右侧色标)
-    ObjectDelete(obj_name + "_Border");
-    ObjectDelete(obj_name + "_T");
-    ObjectDelete(obj_name + "_B");
-    ObjectDelete(obj_name + "_Tag");
-
+    
     // Print("SMC: 删除最旧的", type_prefix, "区域 at bar ", poi_zones[oldest_index].start_bar);
-
+    
     // 将数组元素左移（删除指定索引的元素）
     for(int i = oldest_index; i < poi_count - 1; i++) {
         poi_zones[i] = poi_zones[i + 1];
     }
-
+    
     poi_count--;
     g_data_version++; // 删除旧POI（按类型），版本递增
 }
@@ -2850,18 +2758,18 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
 {
     // 检查指定类型是否达到最大数量限制
     int current_type_count = CountPOIZonesByType(type);
-    int max_count = (type == 0) ? MaxFVGZones : (MaxOBZones * 3); // [v1.72] OB存储池放大(显示数仍受MaxOBZones控制)
-
+    int max_count = (type == 0) ? MaxFVGZones : MaxOBZones; // 0=FVG, 1=OB
+    
     if(current_type_count >= max_count) {
         RemoveOldestPOIZoneByType(type);
     }
-
+    
     // 确保不会超出数组边界
     if(poi_count >= ArraySize(poi_zones)) {
         Print("警告: POI区域数组已满，无法添加新区域");
         return;
     }
-
+    
     poi_zones[poi_count].start_bar = bar;
     poi_zones[poi_count].top_price = top;
     poi_zones[poi_count].bottom_price = bottom;
@@ -2871,7 +2779,7 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
     poi_zones[poi_count].zone_id = "POI_" + IntegerToString(bar) + "_" + IntegerToString(type);
     poi_zones[poi_count].is_drawn = false;
     poi_zones[poi_count].trigger_count = 0;
-
+    
     // 初始化OB生命周期字段
     if(type == 1 && EnableOBLifecycle) { // 仅对Order Block启用生命周期
         poi_zones[poi_count].touch_count = 0;
@@ -2895,12 +2803,11 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
     poi_zones[poi_count].quality_score   = 0.0;
     poi_zones[poi_count].quality_grade   = "D";
     poi_zones[poi_count].fill_pct        = 0.0;   // [v1.71]
-    poi_zones[poi_count].has_structure_confluence = false; // [v1.71]
 
     // string type_name = (type == 0) ? "FVG" : "OB";
-    // Print("SMC: 添加新的", type_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]),
+    // Print("SMC: 添加新的", type_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]), 
     //       " 当前总数: ", poi_count + 1, "/", MaxPOIZones * 2);
-
+    
     poi_count++;
     g_data_version++; // 新增POI区域，版本递增
 }
@@ -2913,7 +2820,7 @@ void AddPOIZone(int bar, double top, double bottom, bool is_bullish, int type)
 void RemoveOldestStructureZone(int target_type)
 {
     if(structure_count <= 0) return;
-
+    
     // 查找 start_bar 最大的（时间最旧的）指定类型区域
     // MT4: bar index 越大 = 越旧（更靠图表左侧）
     int oldest_index = -1;
@@ -2925,25 +2832,25 @@ void RemoveOldestStructureZone(int target_type)
             oldest_index = i;
         }
     }
-
+    
     if(oldest_index == -1) return; // 没有找到指定类型的区域
-
+    
     // 删除最旧区域对应的图形对象
     string type_prefix = (target_type == 0) ? "BOS" : "CHOCH";
     string direction_suffix = structure_zones[oldest_index].is_bullish ? "_up" : "_down";
     string obj_name = "SMC_Struct_" + type_prefix + "_" + IntegerToString(structure_zones[oldest_index].start_bar) + direction_suffix;
     string label_name = "SMC_StructLabel_" + type_prefix + "_" + IntegerToString(structure_zones[oldest_index].start_bar) + direction_suffix;
-
+    
     ObjectDelete(obj_name);
     ObjectDelete(label_name);
-
+    
     // Print("SMC: 删除最旧的", type_prefix, direction_suffix, "区域 at bar ", structure_zones[oldest_index].start_bar, " 时间: ", TimeToString(Time[structure_zones[oldest_index].start_bar]));
-
+    
     // 将数组元素左移（删除指定索引的元素）
     for(int i = oldest_index; i < structure_count - 1; i++) {
         structure_zones[i] = structure_zones[i + 1];
     }
-
+    
     structure_count--;
     g_data_version++; // 删除旧结构区，版本递增
 }
@@ -2983,21 +2890,21 @@ void AddStructureZone(int bar, double break_price, bool is_bullish, int structur
     // 检查指定类型是否达到最大数量限制
     int current_type_count = CountStructureZones(structure_type);
     int max_count = (structure_type == 0) ? MaxBOSZones : MaxCHOCHZones;
-
+    
     if(current_type_count >= max_count) {
         RemoveOldestStructureZone(structure_type);
     }
-
+    
     // 确保不会超出数组边界
     if(structure_count >= ArraySize(structure_zones)) {
         Print("警告: 结构区域数组已满，无法添加新区域");
         return;
     }
-
+    
     // 对于结构突破，我们只需要标记被突破的价格水平，top和bottom是同一个价格
     double top_price = break_price;
     double bottom_price = break_price;
-
+    
     structure_zones[structure_count].start_bar = bar;
     structure_zones[structure_count].swing_bar = swing_bar;
     structure_zones[structure_count].top_price = top_price;
@@ -3005,21 +2912,21 @@ void AddStructureZone(int bar, double break_price, bool is_bullish, int structur
     structure_zones[structure_count].is_bullish = is_bullish;
     structure_zones[structure_count].is_broken = false;
     structure_zones[structure_count].structure_type = structure_type;
-
+    
     string direction_suffix = is_bullish ? "_up" : "_down";
     structure_zones[structure_count].zone_id = "STRUCT_" + IntegerToString(bar) + "_" + IntegerToString(structure_type) + direction_suffix;
     structure_zones[structure_count].is_drawn = false;
-
+    
     string type_name = (structure_type == 0) ? "BOS" : "CHoCH";
     string direction_name = is_bullish ? "向上" : "向下";
-
-    // Print("SMC: 添加新的", type_name, direction_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]),
+    
+    // Print("SMC: 添加新的", type_name, direction_name, "区域 at bar ", bar, " 时间: ", TimeToString(Time[bar]), 
     //       " 价格范围: ", DoubleToString(bottom_price, Digits), "-", DoubleToString(top_price, Digits),
     //       " 当前", type_name, "总数: ", current_type_count + 1, "/", max_count);
-
+    
     structure_count++;
     g_data_version++; // 新增结构区，版本递增
-
+    
     // 立即触发图表重绘
     ChartRedraw();
 }
@@ -3032,7 +2939,7 @@ void UpdatePOIStatus(int current_bar, const double &high[], const double &low[],
     for(int i = 0; i < poi_count; i++) {
         // 边界检查
         if(current_bar < 0 || current_bar >= ArraySize(high)) continue;
-
+        
         if(poi_zones[i].poi_type == 0) { // FVG - 保持原有逻辑
             ProcessFVGStatus(i, current_bar, high, low, close);
         } else if(poi_zones[i].poi_type == 1 && EnableOBLifecycle) { // Order Block - 新的生命周期逻辑
@@ -3098,15 +3005,15 @@ void ProcessFVGStatus(int index, int current_bar, const double &high[], const do
 void ProcessOBTraditional(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].is_mitigated) return;
-
-    if(low[current_bar] <= poi_zones[index].top_price &&
+    
+    if(low[current_bar] <= poi_zones[index].top_price && 
        high[current_bar] >= poi_zones[index].bottom_price) {
         poi_zones[index].is_mitigated = true;
         g_data_version++;
-
+        
         if(EnableOBDebug) {
             string direction = poi_zones[index].is_bullish ? "看涨" : "看跌";
-            Print("SMC OB传统触及: ", direction, "OB区域被触及 at bar ", current_bar,
+            Print("SMC OB传统触及: ", direction, "OB区域被触及 at bar ", current_bar, 
                   " 时间: ", TimeToString(Time[current_bar]));
         }
     }
@@ -3118,13 +3025,13 @@ void ProcessOBTraditional(int index, int current_bar, const double &high[], cons
 void ProcessOBLifecycle(int index, int current_bar, const double &high[], const double &low[], const double &close[])
 {
     if(poi_zones[index].status == 4) return; // 已失效，跳过
-
-    bool price_in_zone = (low[current_bar] <= poi_zones[index].top_price &&
+    
+    bool price_in_zone = (low[current_bar] <= poi_zones[index].top_price && 
                          high[current_bar] >= poi_zones[index].bottom_price);
-
+    
     bool bullish_break = false, bearish_break = false;
     double momentum = 0.0;
-
+    
     // 计算突破情况和动能
     if(poi_zones[index].is_bullish) {
         // 多头OB：检查是否收盘突破上方或下方
@@ -3145,7 +3052,7 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
             momentum = CalculateBarMomentum(current_bar, high, low, close);
         }
     }
-
+    
     // 状态机逻辑
     switch(poi_zones[index].status) {
         case 0: // Fresh -> Tested 或 (未触及即被击穿) -> Broken_Once
@@ -3165,7 +3072,7 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
                 LogOBLifecycleEvent(index, current_bar, "未触及即被击穿", "Fresh -> Broken_Once");
             }
             break;
-
+            
         case 1: // Tested -> Weakened 或 -> Broken_Once
         case 2: // Weakened -> Broken_Once
             if(price_in_zone && IsValidTouch(index, current_bar)) {
@@ -3182,7 +3089,7 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
                 LogOBLifecycleEvent(index, current_bar, "首次突破", "-> Broken_Once");
             }
             break;
-
+            
         case 3: // Broken_Once -> Invalid 或 -> Weakened (假突破复活)
             // 失效必须用"反向破坏方向"确认：多头看向下破底，空头看向上破顶
             if((poi_zones[index].is_bullish && bearish_break) || (!poi_zones[index].is_bullish && bullish_break)) {
@@ -3193,7 +3100,7 @@ void ProcessOBLifecycle(int index, int current_bar, const double &high[], const 
                     g_data_version++;
                     LogOBLifecycleEvent(index, current_bar, "确认失效", "-> Invalid");
                 }
-            } else if(price_in_zone && close[current_bar] > poi_zones[index].bottom_price &&
+            } else if(price_in_zone && close[current_bar] > poi_zones[index].bottom_price && 
                      close[current_bar] < poi_zones[index].top_price) {
                 // 假突破，价格重新回到区域内
                 poi_zones[index].status = 2; // Weakened
@@ -3219,10 +3126,10 @@ bool IsValidTouch(int index, int current_bar)
 double CalculateBarMomentum(int bar, const double &high[], const double &low[], const double &close[])
 {
     if(bar < 0 || bar >= ArraySize(high)) return 0.0;
-
+    
     double body_size = MathAbs(close[bar] - Open[bar]);
     double atr_value = iATR(Symbol(), Period(), AtrPeriod, bar);
-
+    
     if(atr_value <= 0) return 0.0;
     return body_size / atr_value;
 }
@@ -3233,16 +3140,16 @@ double CalculateBarMomentum(int bar, const double &high[], const double &low[], 
 void LogOBLifecycleEvent(int index, int current_bar, string event_type, string transition)
 {
     if(!ShowOBLifecycleInfo) return;
-
+    
     string direction = poi_zones[index].is_bullish ? "看涨" : "看跌";
     string status_names[] = {"Fresh", "Tested", "Weakened", "Broken_Once", "Invalid"};
-    string current_status = (poi_zones[index].status >= 0 && poi_zones[index].status <= 4) ?
+    string current_status = (poi_zones[index].status >= 0 && poi_zones[index].status <= 4) ? 
                            status_names[poi_zones[index].status] : "Unknown";
-
-    // Print("SMC OB生命周期: ", direction, "OB ", event_type, " at bar ", current_bar,
-    //       " | ", transition, " | 状态: ", current_status,
+    
+    // Print("SMC OB生命周期: ", direction, "OB ", event_type, " at bar ", current_bar, 
+    //       " | ", transition, " | 状态: ", current_status, 
     //       " | 触及次数: ", poi_zones[index].touch_count,
-    //       " | 价格: ", DoubleToString(poi_zones[index].bottom_price, Digits),
+    //       " | 价格: ", DoubleToString(poi_zones[index].bottom_price, Digits), 
     //       "-", DoubleToString(poi_zones[index].top_price, Digits));
 }
 
@@ -3252,24 +3159,13 @@ void LogOBLifecycleEvent(int index, int current_bar, string event_type, string t
 bool ShouldSkipOB(int index, string &skip_reason)
 {
     if(EnableOBLifecycle && poi_zones[index].status >= 0) {
-        // [v1.72] 由 OBDisplayLevel 统一驱动:换算可见阈值与是否显示失效
-        double min_score; bool show_invalid;
-        switch(OBDisplayLevel) {
-            case 0: min_score = 0.80; show_invalid = false; break; // 关键
-            case 2: min_score = 0.40; show_invalid = false; break; // 扩展
-            case 3: min_score = 0.00; show_invalid = true;  break; // 全部(历史)
-            case 1:
-            default: min_score = 0.60; show_invalid = false; break; // 标准
-        }
-        // 失效隐藏(除非等级3)
-        if(poi_zones[index].status == 4 && !show_invalid) {
-            skip_reason = "失效隐藏(等级<3)";
+        // 使用生命周期逻辑
+        if(poi_zones[index].status == 4 && RemoveInvalidOB) { // Invalid且设置移除
+            skip_reason = "失效已移除";
             return true;
         }
-        // 质量过滤:+S结构背书的OB无视阈值始终显示
-        if(!poi_zones[index].has_structure_confluence &&
-           poi_zones[index].quality_score < min_score) {
-            skip_reason = "低于显示等级";
+        if(HideLowQualityOB && poi_zones[index].quality_score < MinVisibleOBQualityScore) {
+            skip_reason = "低质量隐藏";
             return true;
         }
     } else {
@@ -3280,27 +3176,6 @@ bool ShouldSkipOB(int index, string &skip_reason)
         }
     }
     return false;
-}
-
-//+------------------------------------------------------------------+
-//| [v1.72] 计算OB显示优先级cutoff:返回第MaxOBZones高的quality_score   |
-//| 候选数<=MaxOBZones时返回-1(全显示)。绘制时只画 score>=cutoff。      |
-//+------------------------------------------------------------------+
-double ComputeOBDisplayCutoff()
-{
-    double scores[];
-    int n = 0;
-    for(int i = 0; i < poi_count; i++) {
-        if(poi_zones[i].poi_type != 1) continue;
-        string r = "";
-        if(ShouldSkipOB(i, r)) continue;   // 仅统计通过等级过滤的OB
-        ArrayResize(scores, n + 1);
-        scores[n] = poi_zones[i].quality_score;
-        n++;
-    }
-    if(n <= MaxOBZones) return -1.0;        // 全部可显示
-    ArraySort(scores);                       // 升序
-    return scores[n - MaxOBZones];           // 第MaxOBZones高 = cutoff
 }
 
 //+------------------------------------------------------------------+
@@ -3342,11 +3217,10 @@ color GetOBDisplayColor(int index)
 string GetOBDisplayLabel(int index)
 {
     string direction = poi_zones[index].is_bullish ? "Bullish" : "Bearish";
-
+    
     if(EnableOBLifecycle && poi_zones[index].status >= 0) {
         // 使用生命周期逻辑：方向 + OB[+FVG] + 状态 + [等级]
         string fvg_tag   = poi_zones[index].has_fvg_overlap ? "+FVG" : "";
-        string struct_tag = poi_zones[index].has_structure_confluence ? "+S" : "";
         string grade_tag = ShowOBQualityGrade ? (" [" + poi_zones[index].quality_grade + "]") : "";
         string state_tag = "";
         switch(poi_zones[index].status) {
@@ -3357,7 +3231,7 @@ string GetOBDisplayLabel(int index)
             case 4: state_tag = " Invalid"; break;
             default: state_tag = "";        break;
         }
-        return direction + " OB" + fvg_tag + struct_tag + state_tag + grade_tag;
+        return direction + " OB" + fvg_tag + state_tag + grade_tag;
     } else {
         // 传统逻辑（向后兼容）
         string label = direction + " OB";
@@ -3442,8 +3316,6 @@ double CalculateOBQualityScore(int ob_index)
        (!poi_zones[ob_index].is_bullish && g_market_trend == -1)) {
         bonus += 0.05;
     }
-    // [v1.71 hybrid] 结构加分:OB紧邻同向结构突破(BOS/CHoCH),更贴近标准
-    if(poi_zones[ob_index].has_structure_confluence) bonus += 0.15;
 
     double score = base + bonus;
     if(score < 0.0) score = 0.0;
@@ -3480,16 +3352,6 @@ void RefreshOBFVGConfluence()
             }
         }
 
-        // [v1.71 hybrid] 结构加分:扫描同向、邻近(±15根)的结构突破(BOS/CHoCH)
-        poi_zones[i].has_structure_confluence = false;
-        for(int s = 0; s < structure_count; s++) {
-            if(structure_zones[s].is_bullish != poi_zones[i].is_bullish) continue;
-            if(MathAbs(structure_zones[s].start_bar - poi_zones[i].start_bar) <= 15) {
-                poi_zones[i].has_structure_confluence = true;
-                break;
-            }
-        }
-
         // 计算质量分与等级
         poi_zones[i].quality_score = CalculateOBQualityScore(i);
         poi_zones[i].quality_grade = GetOBGradeLabel(poi_zones[i].quality_score);
@@ -3523,7 +3385,7 @@ void UpdateBuffers(int current_bar)
         Print("警告: UpdateBuffers数组越界，current_bar=", current_bar, " ArraySize=", ArraySize(BOS_Top));
         return;
     }
-
+    
     // 初始化当前K线的所有缓冲区
     BOS_Top[current_bar] = EMPTY_VALUE;
     BOS_Bottom[current_bar] = EMPTY_VALUE;
@@ -3548,25 +3410,25 @@ void UpdateBuffers(int current_bar)
             }
         }
     }
-
+    
     // 更新POI区域缓冲区 (FVG/OB) - 分开处理不同类型
-
+    
     // 1. 处理FVG缓冲区 - FVG标记在实际形成的K线上
     for(int i = 0; i < poi_count; i++) {
         if(poi_zones[i].poi_type == 0 && poi_zones[i].start_bar == current_bar) { // FVG
             FVG_Top[current_bar] = poi_zones[i].top_price;
             FVG_Bottom[current_bar] = poi_zones[i].bottom_price;
-            // Print("SMC: 设置FVG缓冲区 at bar ", current_bar, " Top=",
+            // Print("SMC: 设置FVG缓冲区 at bar ", current_bar, " Top=", 
             //       DoubleToString(poi_zones[i].top_price, Digits), " Bottom=", DoubleToString(poi_zones[i].bottom_price, Digits));
         }
     }
-
+    
     // 2. 处理OB缓冲区 - OB标记在实际形成的K线上
     for(int i = 0; i < poi_count; i++) {
         if(poi_zones[i].poi_type == 1 && poi_zones[i].start_bar == current_bar) { // Order Block
             OB_Top[current_bar] = poi_zones[i].top_price;
             OB_Bottom[current_bar] = poi_zones[i].bottom_price;
-            // Print("SMC: 设置OB缓冲区 at bar ", current_bar, " Top=", DoubleToString(poi_zones[i].top_price, Digits),
+            // Print("SMC: 设置OB缓冲区 at bar ", current_bar, " Top=", DoubleToString(poi_zones[i].top_price, Digits), 
             //       " Bottom=", DoubleToString(poi_zones[i].bottom_price, Digits));
         }
     }
@@ -3582,22 +3444,22 @@ void DrawGraphicalObjects()
     static int last_structure_count = 0;
     static int last_poi_count = 0;
     static int last_draw_version = -1;
-
+    
     datetime current_time = TimeCurrent();
     bool force_refresh = false;
-
+    
     // 数据数量变化触发强制刷新
     if(structure_count != last_structure_count || poi_count != last_poi_count) {
         force_refresh = true;
         last_structure_count = structure_count;
         last_poi_count = poi_count;
     }
-
+    
     // 版本变化触发强制刷新
     if(g_data_version != last_draw_version) {
         force_refresh = true;
     }
-
+    
     // 收盘后5秒内：强制刷新（仅在实盘/前向环境启用，避免测试器中恒为真导致持续强制刷新）
     bool within_5s_after_close = false;
     if(!IsTesting() && !IsOptimization()) {
@@ -3609,10 +3471,10 @@ void DrawGraphicalObjects()
     }
     // 先关闭，如果出现不准确的情况再打开
     // if(within_5s_after_close) force_refresh = true;
-
+    
     // 限制重绘频率，但允许强制刷新
     if(current_time - last_update < 1 && !first_draw && !force_refresh) return;
-
+    
     // 首次绘制或强制刷新时清除所有旧的SMC图形对象
     if(first_draw || force_refresh) {
         for(int j = ObjectsTotal(0, -1, -1) - 1; j >= 0; j--) {
@@ -3621,7 +3483,7 @@ void DrawGraphicalObjects()
                 ObjectDelete(obj_name);
             }
         }
-
+        
         // 重置所有绘制标记，强制重绘所有对象
         for(int k = 0; k < structure_count; k++) {
             structure_zones[k].is_drawn = false;
@@ -3629,7 +3491,7 @@ void DrawGraphicalObjects()
         for(int k = 0; k < poi_count; k++) {
             poi_zones[k].is_drawn = false;
         }
-
+        
         if(first_draw) {
             Print("SMC: 首次绘制，清除所有旧图形对象");
             first_draw = false;
@@ -3637,7 +3499,7 @@ void DrawGraphicalObjects()
             // Print("SMC: 强制刷新，重绘所有图形对象 (结构:", structure_count, ", POI:", poi_count, ")");
         }
     }
-
+    
     // 绘制BOS结构区域（只绘制未绘制的）
     if(ShowBOS) {
         for(int i = 0; i < structure_count; i++) {
@@ -3647,7 +3509,7 @@ void DrawGraphicalObjects()
             }
         }
     }
-
+    
     // 绘制CHOCH结构区域（只绘制未绘制的）
     if(ShowCHOCH) {
         for(int i = 0; i < structure_count; i++) {
@@ -3657,7 +3519,7 @@ void DrawGraphicalObjects()
             }
         }
     }
-
+    
     // 绘制FVG区域（只绘制未绘制的）
     if(ShowFVG) {
         int fvg_drawn = 0, fvg_skipped = 0;
@@ -3669,7 +3531,7 @@ void DrawGraphicalObjects()
                     poi_zones[i].is_drawn = true; // 标记为已处理，避免重复检查
                     continue;
                 }
-
+                
                 // [v1.71] 已填充FVG默认隐藏(除非 ShowMitigatedPOI 显式打开)
                 if(poi_zones[i].is_mitigated && !ShowMitigatedPOI) {
                     poi_zones[i].is_drawn = true;
@@ -3687,12 +3549,12 @@ void DrawGraphicalObjects()
             }
         }
     }
-
+    
     // 绘制Order Block区域（支持生命周期显示）
     if(ShowOrderBlocks) {
         int ob_drawn = 0, ob_skipped = 0;
         int ob_fresh = 0, ob_tested = 0, ob_weakened = 0, ob_broken = 0, ob_invalid = 0;
-
+        
         // 统计OB区域生命周期状态
         for(int i = 0; i < poi_count; i++) {
             if(poi_zones[i].poi_type == 1) { // Order Block
@@ -3707,56 +3569,49 @@ void DrawGraphicalObjects()
                 }
             }
         }
-
-        double ob_cutoff = ComputeOBDisplayCutoff(); // [v1.72] 优先级Top-N门槛
+        
         for(int i = 0; i < poi_count; i++) {
             if(poi_zones[i].poi_type == 1 && (!poi_zones[i].is_drawn || ForceOBRedraw)) { // Order Block且未绘制或强制重绘
-
+                
                 // 检查是否应该跳过
                 string skip_reason = "";
                 if(ShouldSkipOB(i, skip_reason)) {
                     ob_skipped++;
                     poi_zones[i].is_drawn = true;
-
+                    
                     if(EnableOBDebug) {
                         string direction = poi_zones[i].is_bullish ? "看涨" : "看跌";
                         Print("SMC OB调试: 跳过", skip_reason, direction, "OB区域 at bar ", poi_zones[i].start_bar);
                     }
                     continue;
                 }
-                // [v1.72] 优先级Top-N:低于cutoff的低优先OB不画(保证留重要的)
-                if(ob_cutoff > 0.0 && poi_zones[i].quality_score < ob_cutoff) {
-                    ob_skipped++;
-                    poi_zones[i].is_drawn = true;
-                    continue;
-                }
-
+                
                 // 获取显示信息
                 color zone_color = GetOBDisplayColor(i);
                 string zone_label = GetOBDisplayLabel(i);
                 string level_name = GetOBLevelName(i);
-
+                
                 // 绘制OB区域
                 DrawPOIZone(i, "OB", zone_color, zone_label);
                 poi_zones[i].is_drawn = true;
                 ob_drawn++;
-
+                
                 if(EnableOBDebug) {
                     string direction = poi_zones[i].is_bullish ? "看涨" : "看跌";
-                    Print("SMC OB调试: 绘制", direction, "OB区域 at bar ", poi_zones[i].start_bar,
+                    Print("SMC OB调试: 绘制", direction, "OB区域 at bar ", poi_zones[i].start_bar, 
                           " 等级: ", level_name, " 颜色: ", IntegerToString(zone_color),
                           " 价格: ", DoubleToString(poi_zones[i].bottom_price, Digits), "-", DoubleToString(poi_zones[i].top_price, Digits));
                 }
             }
         }
-
+        
         // 显示OB生命周期状态信息
         if(EnableOBDebug && ShowOBStatusInfo && EnableOBLifecycle && (ob_drawn > 0 || ob_skipped > 0)) {
-            Print("SMC OB生命周期状态: Fresh=", ob_fresh, " Tested=", ob_tested, " Weakened=", ob_weakened,
+            Print("SMC OB生命周期状态: Fresh=", ob_fresh, " Tested=", ob_tested, " Weakened=", ob_weakened, 
                   " Broken=", ob_broken, " Invalid=", ob_invalid, " 本次绘制=", ob_drawn, " 跳过=", ob_skipped);
         }
     }
-
+    
     // 绘制摆点连线
     if(ShowSwingConnections) {
         DrawSwingConnections();
@@ -3768,7 +3623,7 @@ void DrawGraphicalObjects()
     last_update = current_time;
     last_draw_version = g_data_version;
     g_last_drawn_version = g_data_version;
-
+    
     // 统计有效区域数量
     int active_fvg = 0, active_ob = 0, mitigated_fvg = 0, mitigated_ob = 0;
     for(int i = 0; i < poi_count; i++) {
@@ -3780,11 +3635,11 @@ void DrawGraphicalObjects()
             else active_ob++;
         }
     }
-
+    
     // 统计BOS和CHoCH数量
     int bos_count = CountStructureZones(0);
     int choch_count = CountStructureZones(1);
-
+    
     // 更新调试信息
     string debug_info = "SMC: BOS=" + IntegerToString(bos_count) + "/" + IntegerToString(MaxBOSZones) +
                        " | CHoCH=" + IntegerToString(choch_count) + "/" + IntegerToString(MaxCHOCHZones) +
@@ -3795,7 +3650,7 @@ void DrawGraphicalObjects()
                        " | 强制刷新=" + (force_refresh ? "是" : "否") +
                        " | ver=" + IntegerToString(g_data_version);
     Comment(debug_info);
-
+    
     // 可选绘制Premium/Discount参考线
     if(ShowPremiumDiscountLines && UsePremiumDiscount) {
         int window = MathMax(StructureLookback * OuterLookbackFactor * 4, 20);
@@ -3836,40 +3691,40 @@ void DrawGraphicalObjects()
 void DrawStructureZone(int zone_index, string type_name, color zone_color)
 {
     Structure_Zone zone = structure_zones[zone_index];
-
+    
     // 概念修正：对于结构突破，top_price和bottom_price是相同的，代表被突破的价格水平
     if(zone.start_bar < 0 || zone.start_bar >= Bars) return;
-
+    
     // 添加方向后缀到对象名称
     string direction_suffix = zone.is_bullish ? "_up" : "_down";
     string obj_name = "SMC_Struct_" + type_name + "_" + IntegerToString(zone.start_bar) + direction_suffix;
-
-    // [v1.72] 起点回退为被破摆点(swing_bar),start_bar 兜底
+    
+    // --- 修正：射线从被突破的摆点开始向右延伸 ---
+    // 起点：被突破的摆点时间（swing_bar），这才是正确的SMC概念
     datetime ray_start_time;
     if(zone.swing_bar >= 0 && zone.swing_bar < Bars) {
-        ray_start_time = Time[zone.swing_bar];   // 从被破摆点开始
-    } else if(zone.start_bar >= 0 && zone.start_bar < Bars) {
-        ray_start_time = Time[zone.start_bar];   // 兜底:突破点
+        ray_start_time = Time[zone.swing_bar];  // 从被突破的摆点开始
     } else {
-        ray_start_time = TimeCurrent();          // 最终兜底
+        ray_start_time = Time[zone.start_bar];  // 备用：从突破发生点开始
+        Print("SMC 警告: ", type_name, " 无效的swing_bar索引 (", zone.swing_bar, ")，射线起点改为突破点");
     }
     // 第二点：位于右侧的未来时间，用于定义射线方向
     datetime ray_dir_time = TimeCurrent() + PeriodSeconds() * 100;
-
-    // 创建趋势线并设为向右射线([v1.72]修复:样式对新建/已存在对象都生效)
-    ObjectCreate(0, obj_name, OBJ_TREND, 0, ray_start_time, zone.top_price, ray_dir_time, zone.top_price);
-    ObjectMove(0, obj_name, 0, ray_start_time, zone.top_price);
-    ObjectMove(0, obj_name, 1, ray_dir_time,  zone.top_price);
-    ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
-    // [v1.72] MT4仅在线宽<=1时渲染虚线:BOS宽1虚线 / CHoCH宽2实线
-    ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, (type_name == "BOS") ? 1 : 2);
-    ObjectSetInteger(0, obj_name, OBJPROP_STYLE, (type_name == "BOS") ? STYLE_DASH : STYLE_SOLID);
-    ObjectSetInteger(0, obj_name, OBJPROP_RAY, true);
-    ObjectSetInteger(0, obj_name, OBJPROP_RAY_RIGHT, true);
-
+    
+    // 创建趋势线并设为向右射线
+    if(ObjectCreate(0, obj_name, OBJ_TREND, 0, ray_start_time, zone.top_price, ray_dir_time, zone.top_price))
+    {
+        ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
+        ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);
+        ObjectSetInteger(0, obj_name, OBJPROP_STYLE, STYLE_SOLID);
+        // 尽量兼容：开启右侧射线
+        ObjectSetInteger(0, obj_name, OBJPROP_RAY, true);
+        ObjectSetInteger(0, obj_name, OBJPROP_RAY_RIGHT, true);
+    }
+    
     // 添加标签（也包含方向信息）
     string label_name = "SMC_StructLabel_" + type_name + "_" + IntegerToString(zone.start_bar) + direction_suffix;
-
+    
     // 动态计算标签偏移，避免写死
     double atr_val = iATR(NULL, 0, AtrPeriod, zone.start_bar);
     double label_offset = atr_val * 0.2; // 使用ATR的20%作为偏移量
@@ -3877,9 +3732,9 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
 
     // 向上突破标签在线上方，向下突破在线下方
     double label_price = zone.is_bullish ? zone.top_price + label_offset : zone.top_price - label_offset;
-
+    
     string label_text = type_name + (zone.is_bullish ? "↑" : "↓");
-
+    
     // 标签绘制在被突破的摆点位置（射线起点）
     if(ObjectCreate(0, label_name, OBJ_TEXT, 0, ray_start_time, label_price))
     {
@@ -3897,12 +3752,12 @@ void DrawStructureZone(int zone_index, string type_name, color zone_color)
 void DrawPOIZone(int zone_index, string type_prefix, color zone_color, string label_text)
 {
     POI_Zone zone = poi_zones[zone_index];
-
+    
     if(zone.start_bar < 0 || zone.start_bar >= Bars) return;
     if(zone.top_price <= zone.bottom_price) return;
-
+    
     string obj_name = "SMC_Zone_" + type_prefix + "_" + IntegerToString(zone.start_bar);
-
+    
     // 安全获取起始时间，添加边界检查和有效性验证
     datetime start_time;
     if(zone.start_bar >= 0 && zone.start_bar < ArraySize(Time) && zone.start_bar < Bars) {
@@ -3924,69 +3779,32 @@ void DrawPOIZone(int zone_index, string type_prefix, color zone_color, string la
         start_time = TimeCurrent() - PeriodSeconds() * safe_offset;
         Print("SMC 警告: ", type_prefix, " 区域bar索引越界 (", zone.start_bar, "/", Bars, ")，使用备用时间偏移=", safe_offset);
     }
-
+    
     datetime end_time = TimeCurrent() + PeriodSeconds() * 100;
-
-    // [v1.72] 区域显示形式:0填充 / 1边框 / 2上下线
-    if(ZoneDisplayStyle == 2) {
-        // 上下两条水平射线
-        string top_name = obj_name + "_T";
-        string bot_name = obj_name + "_B";
-        if(ObjectCreate(0, top_name, OBJ_TREND, 0, start_time, zone.top_price, end_time, zone.top_price)) {
-            ObjectSetInteger(0, top_name, OBJPROP_COLOR, zone_color);
-            ObjectSetInteger(0, top_name, OBJPROP_WIDTH, 1);
-            ObjectSetInteger(0, top_name, OBJPROP_STYLE, STYLE_SOLID);
-            ObjectSetInteger(0, top_name, OBJPROP_RAY_RIGHT, true);
-            ObjectSetInteger(0, top_name, OBJPROP_BACK, true);
-        }
-        if(ObjectCreate(0, bot_name, OBJ_TREND, 0, start_time, zone.bottom_price, end_time, zone.bottom_price)) {
-            ObjectSetInteger(0, bot_name, OBJPROP_COLOR, zone_color);
-            ObjectSetInteger(0, bot_name, OBJPROP_WIDTH, 1);
-            ObjectSetInteger(0, bot_name, OBJPROP_STYLE, STYLE_SOLID);
-            ObjectSetInteger(0, bot_name, OBJPROP_RAY_RIGHT, true);
-            ObjectSetInteger(0, bot_name, OBJPROP_BACK, true);
-        }
-    } else {
-        // 矩形:style0=填充 / style1=边框
-        bool do_fill = (ZoneDisplayStyle == 0);
-        if(ObjectCreate(0, obj_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price))
-        {
-            ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
-            ObjectSetInteger(0, obj_name, OBJPROP_BACK, do_fill);          // 填充置后/边框置前
-            ObjectSetInteger(0, obj_name, OBJPROP_FILL, do_fill);
-            ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, do_fill ? 2 : 1);
-            ObjectSetInteger(0, obj_name, OBJPROP_STYLE, STYLE_SOLID);
-
-            // 仅填充样式下为OB加强边框
-            if(do_fill && StringFind(obj_name, "OB") >= 0) {
-                string border_name = obj_name + "_Border";
-                if(ObjectCreate(0, border_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price)) {
-                    ObjectSetInteger(0, border_name, OBJPROP_COLOR, zone_color);
-                    ObjectSetInteger(0, border_name, OBJPROP_BACK, false);
-                    ObjectSetInteger(0, border_name, OBJPROP_FILL, false);
-                    ObjectSetInteger(0, border_name, OBJPROP_WIDTH, 3);
-                    ObjectSetInteger(0, border_name, OBJPROP_STYLE, STYLE_SOLID);
-                }
+    
+    // 创建矩形
+    if(ObjectCreate(0, obj_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price))
+    {
+        ObjectSetInteger(0, obj_name, OBJPROP_COLOR, zone_color);
+        ObjectSetInteger(0, obj_name, OBJPROP_BACK, true);
+        ObjectSetInteger(0, obj_name, OBJPROP_FILL, true);
+        ObjectSetInteger(0, obj_name, OBJPROP_WIDTH, 2);  // 增加边框宽度
+        ObjectSetInteger(0, obj_name, OBJPROP_STYLE, STYLE_SOLID);
+        
+        // 为OB区域添加更强的边框以提高可见性
+        if(StringFind(obj_name, "OB") >= 0) {
+            // 创建边框对象增强可见性
+            string border_name = obj_name + "_Border";
+            if(ObjectCreate(0, border_name, OBJ_RECTANGLE, 0, start_time, zone.bottom_price, end_time, zone.top_price)) {
+                ObjectSetInteger(0, border_name, OBJPROP_COLOR, zone_color);
+                ObjectSetInteger(0, border_name, OBJPROP_BACK, false);
+                ObjectSetInteger(0, border_name, OBJPROP_FILL, false);
+                ObjectSetInteger(0, border_name, OBJPROP_WIDTH, 3);
+                ObjectSetInteger(0, border_name, OBJPROP_STYLE, STYLE_SOLID);
             }
         }
     }
-
-    // [v1.72] 右侧质量色标:非填充样式下,在最后K线右侧空白区画小实色块(颜色=质量色)
-    if(ShowZoneRightTag && ZoneDisplayStyle != 0) {
-        string tag_name = obj_name + "_Tag";
-        int tag_off = MathMax(1, ZoneRightTagOffsetBars);
-        int tag_w   = MathMax(1, ZoneRightTagWidthBars);
-        datetime tag_start = TimeCurrent() + PeriodSeconds() * tag_off;
-        datetime tag_end   = TimeCurrent() + PeriodSeconds() * (tag_off + tag_w);
-        if(ObjectCreate(0, tag_name, OBJ_RECTANGLE, 0, tag_start, zone.bottom_price, tag_end, zone.top_price)) {
-            ObjectSetInteger(0, tag_name, OBJPROP_COLOR, zone_color);
-            ObjectSetInteger(0, tag_name, OBJPROP_BACK, false);
-            ObjectSetInteger(0, tag_name, OBJPROP_FILL, true);
-            ObjectSetInteger(0, tag_name, OBJPROP_WIDTH, 1);
-            ObjectSetInteger(0, tag_name, OBJPROP_STYLE, STYLE_SOLID);
-        }
-    }
-
+    
     // 添加标签
     string label_name = "SMC_ZoneLabel_" + type_prefix + "_" + IntegerToString(zone.start_bar);
     double label_price = zone.top_price + (zone.top_price - zone.bottom_price) * 0.05;
@@ -4008,22 +3826,6 @@ void DrawSwingConnections()
 {
     // V1.55 优化：清除旧的ZigZag连线和标签，防止重影（特别是当摆点被虚拟点替换时）
     ObjectsDeleteAll(0, "SMC_ZigZag");
-
-    // [诊断] 转储最终参与连线的摆点集合(含分类),用于定位"最后一笔停在A/跳过A"
-    if(EnableDebugMode) {
-        Print("=== DUMP final swing set: swing_count=", swing_count, " ===");
-        for(int d = 0; d < swing_count; d++) {
-            string t = "未分类(-1) [SKIP连线]";
-            switch(swing_points[d].structure_type) {
-                case 0: t="HH"; break; case 1: t="HL"; break;
-                case 2: t="LH"; break; case 3: t="LL"; break;
-            }
-            Print("  sw[", d, "] bar=", swing_points[d].bar_index,
-                  " price=", DoubleToString(swing_points[d].price, 2),
-                  (swing_points[d].is_high ? " 高" : " 低"), " type=", t);
-        }
-        Print("=== END DUMP ===");
-    }
 
     // 创建按时间排序的摆点数组
     struct SwingTimePoint {
@@ -4094,7 +3896,7 @@ void DrawSwingConnections()
             }
         }
     }
-
+    
     // ========== 阶段一：筛选合并 - 生成纯净的ZigZag节点 ==========
     SwingTimePoint zigzag_points[];
     int zigzag_count = 0;
@@ -4142,6 +3944,7 @@ void DrawSwingConnections()
     // 如果筛选后的ZigZag节点不足，无法绘制连线
     if(zigzag_count < 2) return;
     
+    
     // ========== 阶段二：绘制连接 - 基于纯净的ZigZag节点 ==========
     for(int i = 0; i < zigzag_count - 1; i++) {
         SwingTimePoint current_point = zigzag_points[i];
@@ -4172,7 +3975,7 @@ void DrawSwingConnections()
         else {
             is_trend_change = true; // 趋势转换连接
         }
-
+        
         // V1.55 虚拟摆点样式覆盖
         if(current_point.structure_type >= 10 || next_point.structure_type >= 10) {
             line_style = VirtualSwingExtension_Style;
@@ -4213,7 +4016,6 @@ void DrawSwingConnections()
             case 3: current_type_text = "LL"; break;
             case 10: current_type_text = "VHH"; break; // V1.55
             case 13: current_type_text = "VLL"; break; // V1.55
-            default: current_type_text = current_point.is_high ? "H?" : "L?"; break;
         }
         
         string label_name = "SMC_ZigZagLabel_" + IntegerToString(current_point.bar_index);
@@ -4240,7 +4042,6 @@ void DrawSwingConnections()
             case 3: last_type_text = "LL"; break;
             case 10: last_type_text = "VHH"; break; // V1.55
             case 13: last_type_text = "VLL"; break; // V1.55
-            default: last_type_text = last_point.is_high ? "H?" : "L?"; break;
         }
         
         string last_label_name = "SMC_ZigZagLabel_" + IntegerToString(last_point.bar_index);
@@ -4257,6 +4058,7 @@ void DrawSwingConnections()
     }
 }
 
+//+------------------------------------------------------------------+
 //| 辅助函数                                                         |
 //+------------------------------------------------------------------+
 
@@ -4624,22 +4426,6 @@ bool ValidateSwingPointByChan(int bar_index, double price, bool is_high, double 
 }
 
 //+------------------------------------------------------------------+
-//| 将未匹配到原始 swing 的缠论分型合成为 SwingPoint                  |
-//+------------------------------------------------------------------+
-SwingPoint MakeSwingPointFromChanFractal(FractalPoint &fractal)
-{
-    SwingPoint synthetic_from_fractal;
-    synthetic_from_fractal.bar_index = fractal.original_bar;
-    synthetic_from_fractal.price = fractal.price;
-    synthetic_from_fractal.is_high = fractal.is_top;
-    synthetic_from_fractal.is_broken = false;
-    synthetic_from_fractal.structure_type = -1;
-    synthetic_from_fractal.is_extreme = false;
-    synthetic_from_fractal.processed_index = fractal.bar_index;
-    return synthetic_from_fractal;
-}
-
-//+------------------------------------------------------------------+
 //| V1.69：V1.64「极短反向」噪声判定（方案A）                          |
 //| 仅当回抽未突破栈内最近同向极值时，才允许丢弃 current（保留原5210类语义）；|
 //| 若 current 为新低(相对最近低点)或新高(相对最近高点)，视为结构延伸，走回溯。|
@@ -4814,24 +4600,6 @@ int CalculateZigZagPivots(int scan_limit, ZigZagPivot &pivots[])
 }
 
 //+------------------------------------------------------------------+
-//| 将未匹配到原始 swing 的 ZigZag pivot 合成为 SwingPoint             |
-//+------------------------------------------------------------------+
-SwingPoint MakeSwingPointFromZigZagPivot(ZigZagPivot &pivot)
-{
-    SwingPoint synthetic_from_pivot;
-    synthetic_from_pivot.bar_index = pivot.bar_index;
-    synthetic_from_pivot.price = pivot.price;
-    synthetic_from_pivot.is_high = pivot.is_high;
-    synthetic_from_pivot.is_broken = false;
-    synthetic_from_pivot.structure_type = -1;
-    synthetic_from_pivot.is_extreme = false;
-    synthetic_from_pivot.processed_index = (EnableChanOptimization && g_processed_bars_count > 0)
-                                           ? FindProcessedBarIndex(pivot.bar_index, pivot.is_high)
-                                           : -1;
-    return synthetic_from_pivot;
-}
-
-//+------------------------------------------------------------------+
 //| V1.70 ZigZag 摆点前置过滤：以ZigZag交替骨架对原始摆点做严格交集    |
 //| 仿 FilterSwingPointsByChan 写回模式，操作全局 swing_points/count   |
 //+------------------------------------------------------------------+
@@ -4852,79 +4620,39 @@ void FilterSwingPointsByZigZag()
         return; // 降级保护
     }
 
-    // [v1.72修复] 以pivot为中心匹配:ZigZag骨架为真相,每个转折点认领离它最近的同类型未用摆点。
-    // 旧"以摆点为中心+严格一对一"在摆点bar与pivot bar错位时:窗口小漏真实极点(如最低摆点),
-    // 窗口大则被较近摆点抢占而漏其它转折点(如最高摆点)。pivot中心保证每个转折点必被代表。
-    bool swing_used[];
-    ArrayResize(swing_used, swing_count);
-    for(int s = 0; s < swing_count; s++) swing_used[s] = false;
+    // 转折点占用标记(严格一对一匹配)
+    bool pivot_used[];
+    ArrayResize(pivot_used, pivot_count);
+    for(int p = 0; p < pivot_count; p++) pivot_used[p] = false;
 
-    bool keep[];
-    ArrayResize(keep, swing_count);
-    for(int s = 0; s < swing_count; s++) keep[s] = false;
+    SwingPoint filtered[];
+    ArrayResize(filtered, swing_count);
+    int filtered_count = 0;
 
-    SwingPoint unmatched_pivots[];
-    ArrayResize(unmatched_pivots, pivot_count);
-    int unmatched_pivot_count = 0;
-
-    // 每个pivot(时间旧->新)认领最近的同类型未用摆点(bar距离<=窗口)
-    for(int p = 0; p < pivot_count; p++)
+    // 遍历原始摆点(保持原时间顺序)，保留与未占用转折点同类型且bar距离<=窗口的最近者
+    for(int i = 0; i < swing_count; i++)
     {
-        int best_i    = -1;
+        int best_p    = -1;
         int best_dist = ZigZag_MatchWindow + 1;
-        for(int i = 0; i < swing_count; i++)
+        for(int p = 0; p < pivot_count; p++)
         {
-            if(swing_used[i]) continue;
-            if(swing_points[i].is_high != pivots[p].is_high) continue;
-            int dist = MathAbs(swing_points[i].bar_index - pivots[p].bar_index);
+            if(pivot_used[p]) continue;
+            if(pivots[p].is_high != swing_points[i].is_high) continue;
+            int dist = MathAbs(pivots[p].bar_index - swing_points[i].bar_index);
             if(dist <= ZigZag_MatchWindow && dist < best_dist) {
                 best_dist = dist;
-                best_i    = i;
+                best_p    = p;
             }
         }
-        if(best_i >= 0) {
-            swing_used[best_i] = true;
-            keep[best_i]       = true;
-        } else if(EnableDebugMode) {
-            Print("FilterSwingPointsByZigZag: pivot无匹配摆点 ",
-                  (pivots[p].is_high ? "高" : "低"),
-                  " bar=", pivots[p].bar_index, " price=", pivots[p].price);
-        }
-        if(best_i < 0) {
-            unmatched_pivots[unmatched_pivot_count] = MakeSwingPointFromZigZagPivot(pivots[p]);
-            unmatched_pivot_count++;
-            if(EnableDebugMode) {
-                Print("FilterSwingPointsByZigZag: 合成pivot摆点 ",
-                      (pivots[p].is_high ? "高" : "低"),
-                      " bar=", pivots[p].bar_index,
-                      " price=", DoubleToString(pivots[p].price, 2));
-            }
-        }
-    }
-
-    // 按时间(索引)顺序收集保留的摆点(继承全部元数据)
-    SwingPoint filtered[];
-    ArrayResize(filtered, swing_count + unmatched_pivot_count);
-    int filtered_count = 0;
-    for(int i = 0; i < swing_count; i++) {
-        if(keep[i]) {
-            filtered[filtered_count] = swing_points[i];
+        if(best_p >= 0) {
+            pivot_used[best_p] = true;
+            filtered[filtered_count] = swing_points[i]; // 继承全部元数据
             filtered_count++;
-        }
-    }
-    for(int i = 0; i < unmatched_pivot_count; i++) {
-        filtered[filtered_count] = unmatched_pivots[i];
-        filtered_count++;
-    }
-
-    // 合成pivot可能来自原始swing数组之外，重新按时间旧->新排序。
-    for(int i = 0; i < filtered_count - 1; i++) {
-        for(int j = i + 1; j < filtered_count; j++) {
-            if(filtered[i].bar_index < filtered[j].bar_index) {
-                SwingPoint tmp = filtered[i];
-                filtered[i] = filtered[j];
-                filtered[j] = tmp;
-            }
+        } else if(EnableDebugMode) {
+            Print("FilterSwingPointsByZigZag: 剔除未确认摆点 ",
+                  (swing_points[i].is_high ? "高" : "低"),
+                  " bar=", swing_points[i].bar_index,
+                  " price=", swing_points[i].price);
         }
     }
 
@@ -4975,7 +4703,7 @@ void FilterSwingPointsByChan()
 
     // 创建临时数组存储过滤后的摆点
     SwingPoint filtered_swings[];
-    ArrayResize(filtered_swings, swing_count + g_chan_fractal_count);
+    ArrayResize(filtered_swings, swing_count);
     int filtered_count = 0;
 
     // 第一遍：分型验证 + MA21均线过滤（缠论步骤内，包含处理之后）
@@ -5008,43 +4736,6 @@ void FilterSwingPointsByChan()
 
         filtered_swings[filtered_count] = sp;
         filtered_count++;
-    }
-
-    int unmatched_fractal_count = 0;
-    int fractal_match_tolerance = MathMax(3, StructureLookback + 2);
-    for(int f = 0; f < g_chan_fractal_count; f++) {
-        FractalPoint fractal = g_chan_fractals[f];
-        bool represented = false;
-        for(int s = 0; s < filtered_count; s++) {
-            if(filtered_swings[s].is_high != fractal.is_top) continue;
-            if(MathAbs(filtered_swings[s].bar_index - fractal.original_bar) <= fractal_match_tolerance) {
-                represented = true;
-                break;
-            }
-        }
-
-        if(!represented) {
-            filtered_swings[filtered_count] = MakeSwingPointFromChanFractal(g_chan_fractals[f]);
-            filtered_count++;
-            unmatched_fractal_count++;
-            if(EnableDebugMode) {
-                Print("FilterSwingPointsByChan: 合成分型摆点 ",
-                      (fractal.is_top ? "高" : "低"),
-                      " original_bar=", fractal.original_bar,
-                      " price=", DoubleToString(fractal.price, 2));
-            }
-        }
-    }
-
-    // 合成分型可能来自原始 swing 数组之外，重新按时间旧->新排序。
-    for(int i = 0; i < filtered_count - 1; i++) {
-        for(int j = i + 1; j < filtered_count; j++) {
-            if(filtered_swings[i].bar_index < filtered_swings[j].bar_index) {
-                SwingPoint tmp = filtered_swings[i];
-                filtered_swings[i] = filtered_swings[j];
-                filtered_swings[j] = tmp;
-            }
-        }
     }
 
     if(EnableDebugMode) Print("FilterSwingPointsByChan: 分型+MA21过滤后剩余=", filtered_count);
@@ -5736,9 +5427,9 @@ void DrawVirtualStroke()
 //+------------------------------------------------------------------+
 //| V1.55新增：更新虚拟摆点（每个tick调用）                            |
 //| V1.66扩展：支持HL/LH作为最后摆点时延伸至未确认极值                  |
-//| V1.74修复：优先绘制标准ZigZag的未完成反向腿                         |
-//| 场景：最后确认点为低点，价格已经反向上涨但高点尚未确认，             |
-//|       应实时画出低点 -> 当前最高点；最后确认高点后下跌同理。         |
+//| 场景：最后摆点为HL，当前K线最低5016远低于HL，但因需5根反向K线确认   |
+//|       最低点尚未成为摆点。缠论要求应连接到真实极值，故将未确认的    |
+//|       最低/最高点作为虚拟摆点延伸，忽略摆点确认要求。              |
 //+------------------------------------------------------------------+
 void UpdateVirtualSwingPoint(const double &high[], const double &low[], int rates_total)
 {
@@ -5751,59 +5442,47 @@ void UpdateVirtualSwingPoint(const double &high[], const double &low[], int rate
     // 获取最后一个确认的摆点
     SwingPoint last_sp = swing_points[swing_count - 1];
     
+    // V1.66：支持四种类型 0=HH, 1=HL, 2=LH, 3=LL
+    // HH/LL: 延伸至更高/更低极值（原逻辑）
+    // HL: 延伸至更低低点(VLL)，解决"最后是HL但当前最低未确认"的问题
+    // LH: 延伸至更高高点(VHH)，解决"最后是LH但当前最高未确认"的问题
     if(last_sp.structure_type < 0 || last_sp.structure_type > 3) return;
     
     int search_start = last_sp.bar_index - 1;  // 从最后摆点的下一根K线开始搜索
     if(search_start < 0) search_start = 0;
-
-    double max_high = -DBL_MAX;
-    double min_low = DBL_MAX;
-    int max_bar = -1;
-    int min_bar = -1;
-    for(int i = search_start; i >= 0; i--) {
-        if(i < ArraySize(high) && high[i] > max_high) {
-            max_high = high[i];
-            max_bar = i;
+    
+    // 高点类型(0=HH, 2=LH)：找VHH（更高高点）
+    if(last_sp.structure_type == 0 || last_sp.structure_type == 2) {
+        double max_high = -DBL_MAX;
+        int max_bar = -1;
+        for(int i = search_start; i >= 0; i--) {
+            if(i < ArraySize(high) && high[i] > max_high) {
+                max_high = high[i];
+                max_bar = i;
+            }
         }
-        if(i < ArraySize(low) && low[i] < min_low) {
-            min_low = low[i];
-            min_bar = i;
+        if(max_high > last_sp.price) {
+            g_virtual_swing_active = true;
+            g_virtual_swing_add_mode = (last_sp.structure_type == 2); // LH时追加
+            g_virtual_swing_bar = max_bar;
+            g_virtual_swing_price = max_high;
+            g_virtual_swing_is_high = true;
+            g_virtual_swing_type = 10; // VHH
         }
     }
-
-    if(last_sp.is_high) {
-        // 标准未完成腿：最后确认高点之后，优先连接到后续最低低点。
-        if(min_bar >= 0 && min_low < last_sp.price) {
-            g_virtual_swing_active = true;
-            g_virtual_swing_add_mode = true;   // 反向点追加到最后高点之后
-            g_virtual_swing_bar = min_bar;
-            g_virtual_swing_price = min_low;
-            g_virtual_swing_is_high = false;
-            g_virtual_swing_type = 13; // VLL
+    // 低点类型(1=HL, 3=LL)：找VLL（更低低点）
+    else if(last_sp.structure_type == 1 || last_sp.structure_type == 3) {
+        double min_low = DBL_MAX;
+        int min_bar = -1;
+        for(int i = search_start; i >= 0; i--) {
+            if(i < ArraySize(low) && low[i] < min_low) {
+                min_low = low[i];
+                min_bar = i;
+            }
         }
-        // 没有反向腿时，若继续创新高，则替换最后高点。
-        else if(max_bar >= 0 && max_high > last_sp.price) {
+        if(min_low < last_sp.price) {
             g_virtual_swing_active = true;
-            g_virtual_swing_add_mode = false;
-            g_virtual_swing_bar = max_bar;
-            g_virtual_swing_price = max_high;
-            g_virtual_swing_is_high = true;
-            g_virtual_swing_type = 10; // VHH
-        }
-    } else {
-        // 标准未完成腿：最后确认低点之后，优先连接到后续最高高点。
-        if(max_bar >= 0 && max_high > last_sp.price) {
-            g_virtual_swing_active = true;
-            g_virtual_swing_add_mode = true;   // 反向点追加到最后低点之后
-            g_virtual_swing_bar = max_bar;
-            g_virtual_swing_price = max_high;
-            g_virtual_swing_is_high = true;
-            g_virtual_swing_type = 10; // VHH
-        }
-        // 没有反向腿时，若继续创新低，则替换最后低点。
-        else if(min_bar >= 0 && min_low < last_sp.price) {
-            g_virtual_swing_active = true;
-            g_virtual_swing_add_mode = false;
+            g_virtual_swing_add_mode = (last_sp.structure_type == 1); // HL时追加
             g_virtual_swing_bar = min_bar;
             g_virtual_swing_price = min_low;
             g_virtual_swing_is_high = false;
